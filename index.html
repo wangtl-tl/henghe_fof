@@ -6222,13 +6222,49 @@ function runStrategyCompare() {
 
 // ========== 盘手详情弹窗 ==========
 function showTraderDetail(id) {
-    // 简单alert展示，待接入完整详情页
-    alert('账户ID: ' + id + '\n功能开发中，将跳转详情页');
+    // 从TRADER_POOL查找该账户信息
+    let name = '账户 #' + id;
+    let annual = 0, drawdown = 0, nav = 1.0;
+    if (typeof TRADER_POOL !== 'undefined') {
+        const all = [...(TRADER_POOL.core || []), ...(TRADER_POOL.satellite || []), ...(TRADER_WATCH || [])];
+        const found = all.find(r => r[0] == id || r[0] === id);
+        if (found) {
+            name = found[1] || name;
+            annual = parseFloat(found[2]) || 0;
+            drawdown = parseFloat(found[3]) || 0;
+            nav = parseFloat(found[4]) || 1.0;
+        }
+        // 判断池类型
+        const poolType = (TRADER_POOL.core||[]).find(r=>r[0]==id||r[0]===id) ? 'core'
+            : (TRADER_POOL.satellite||[]).find(r=>r[0]==id||r[0]===id) ? 'satellite' : 'watch';
+        showAccountDetail(id, name, poolType, {
+            yield: annual, drawdown: drawdown, weight: 10,
+            win_rate: 50, cluster: 1, contribution: 0
+        });
+    } else {
+        // TRADER_POOL未加载时，直接打开官网
+        window.open('https://qu.iqx.me/contest/account?aid=' + id, '_blank');
+    }
 }
 
 // ========== 加入组合功能 ==========
 function addTraderToPortfolio(id) {
-    alert('账户 ' + id + ' 加入组合功能开发中');
+    // 从TRADER_POOL查找账户名
+    let name = '账户 #' + id;
+    if (typeof TRADER_POOL !== 'undefined') {
+        const all = [...(TRADER_POOL.core || []), ...(TRADER_POOL.satellite || [])];
+        const found = all.find(r => r[0] == id || r[0] === id);
+        if (found) name = found[1] || name;
+    }
+    // 复制到剪贴板
+    const text = name + ' (ID:' + id + ')';
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('已复制: ' + text + '\n\n可手动添加到组合配置中');
+        });
+    } else {
+        alert('账户信息:\n' + name + '\nID: ' + id + '\n\n请手动添加到组合配置中');
+    }
 }
 
 // ========== 风控终端 ==========
@@ -6659,23 +6695,56 @@ function renderModalPositions() {
     const acc = currentAccountData;
     if (!acc) return;
 
-    // 方案B: 使用账户级持仓数据 getEmbeddedAccountPositions()
+    // 使用账户级持仓数据 getEmbeddedAccountPositions()
     const allAccountPositions = getEmbeddedAccountPositions();
     const myPositions = allAccountPositions[acc.id] || [];
 
     if (myPositions.length === 0) {
+        // 无本地数据时，提供官网查看入口
+        const aid = acc.id || '';
+        const accName = acc.name || '该账户';
         document.getElementById('modal-positions-body').innerHTML =
-            '<tr><td colspan="6" style="text-align:center;color:#8b949e;padding:20px;">暂无持仓数据</td></tr>';
+            '<tr><td colspan="6" style="text-align:center;padding:24px 12px;">' +
+            '<div style="color:#8b949e;font-size:13px;margin-bottom:12px;">本地暂无 ' + accName + ' 的持仓数据</div>' +
+            '<a href="https://qu.iqx.me/contest/account?aid=' + aid + '" target="_blank" ' +
+            'style="display:inline-flex;align-items:center;gap:6px;padding:8px 20px;' +
+            'background:linear-gradient(135deg,#1f6feb,#388bfd);color:#fff;border-radius:8px;' +
+            'text-decoration:none;font-size:13px;font-weight:500;">' +
+            '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.75 1a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0V1.75A.75.75 0 0 1 6.75 1zm5.22 2.47a.75.75 0 0 11 1.06 1.06l-3.97 3.97a.75.75 0 1 1-1.06-1.06l3.97-3.97zM3.75 9a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 v-3.5A.75.75 0 0 1 3.75 9zm8.28-.47a.75.75 0 0 10-1.06-1.06l-3.97 3.97a.75.75 0 1 0 1.06 1.06l3.97-3.97z"/></svg>' +
+            '去 qu.iqx.me 查看实时持仓</a>' +
+            '<div style="color:#484f58;font-size:11px;margin-top:10px;">数据来源：qu.iqx.me 排行榜（需登录）</div>' +
+            '</td></tr>';
         return;
     }
 
-    document.getElementById('modal-positions-body').innerHTML = myPositions.map(p => {
+    // 表头
+    let html = '<tr style="background:#161b22;"><th>品种</th><th>方向</th><th>手数</th><th>权重</th><th>开仓日期</th><th>风险</th></tr>';
+
+    // 数据行
+    myPositions.forEach(p => {
         const dirColor = p.direction === 'buy' ? '#f85149' : '#3fb950';
         const dirText = p.direction === 'buy' ? '多' : '空';
+        const dirIcon = p.direction === 'buy' ? '&#x25B2;' : '&#x25BC;';
         const riskMap = { ok: ['正常', 'ok'], warn: ['关注', 'warn'], danger: ['高危', 'high'] };
         const [riskText, riskCls] = riskMap[p.risk] || ['--', ''];
-        return '<tr><td><strong>' + p.symbol + '</strong></td><td style="color:' + dirColor + ';font-weight:600;">' + dirText + '</td><td>' + p.lots + '</td><td>' + p.weight + '%</td><td style="color:#8b949e;">' + (p.date || '--') + '</td><td><span class="risk-tag ' + riskCls + '">' + riskText + '</span></td></tr>';
-    }).join('');
+        const w = parseFloat(p.weight) || 0;
+        const wColor = w > 30 ? '#f85149' : w > 15 ? '#d29922' : '#3fb950';
+        html += '<tr>' +
+            '<td><strong>' + p.symbol + '</strong></td>' +
+            '<td style="color:' + dirColor + ';font-weight:600;">' + dirIcon + ' ' + dirText + '</td>' +
+            '<td>' + p.lots + '</td>' +
+            '<td style="color:' + wColor + ';font-weight:600;">' + p.weight + '%</td>' +
+            '<td style="color:#8b949e;">' + (p.date || '--') + '</td>' +
+            '<td><span class="risk-tag ' + riskCls + '">' + riskText + '</span></td></tr>';
+    });
+
+    // 底部链接
+    html += '<tr><td colspan="6" style="text-align:center;padding:8px;">' +
+        '<a href="https://qu.iqx.me/contest/account?aid=' + (acc.id||'') + '" target="_blank" ' +
+        'style="color:#58a6ff;font-size:11px;text-decoration:none;">' +
+        '&#8594; 在 qu.iqx.me 查看完整持仓</a></td></tr>';
+
+    document.getElementById('modal-positions-body').innerHTML = html;
 }
 
 function renderModalTags() {
