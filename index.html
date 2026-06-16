@@ -4383,13 +4383,14 @@ function renderFollowPositions(data) {
         ? embeddedPositions[currentFollowPortfolio].reduce((s, p) => s + (p.margin || 0), 0)
         : 0;
     const allPositions = embeddedPositions[currentFollowPortfolio] || [];
-    const uniqueAccs = new Set();
-    allPositions.forEach(p => { for(let i=0;i<p.accounts;i++) uniqueAccs.add(p.accounts+'-'+i); });
+    // 涉及账户: 取当前组合的实际账户数(非各品种accounts累加)
+    const portfolioData = getEmbeddedPortfolioData();
+    const uniqueAccountCount = (portfolioData?.[currentFollowPortfolio]?.accounts || []).length;
 
     document.getElementById('pos-total-count').textContent = allPositions.length;
     document.getElementById('pos-total-value').textContent = formatPosMoney(totalValue);
     document.getElementById('pos-total-margin').textContent = formatPosMoney(totalMargin);
-    document.getElementById('pos-total-accs').textContent = allPositions.reduce((s,p)=>s+p.accounts,0);
+    document.getElementById('pos-total-accs').textContent = uniqueAccountCount;
 
     // 渲染行
     tbody.innerHTML = positions.map((p, idx) => {
@@ -6871,7 +6872,6 @@ function renderPositionTableAPI(records, aid) {
         '<span>浮动盈亏 <strong style="color:' + (totalFProfit >= 0 ? '#3fb950' : '#f85149') + ';">' +
         (totalFProfit >= 0 ? '+' : '') + totalFProfit.toLocaleString() + '</strong></span>' +
         '<span>保证金 <strong style="color:#e6edf3;">' + totalMargin.toLocaleString(undefined, {maximumFractionDigits:0}) + '</strong></span>' +
-        '<span style="color:#484f58;margin-left:auto;font-size:11px;">数据来源：qu.iqx.me 实时API [R]</span>' +
         '</div></td></tr>';
 
     // 列标题
@@ -6904,10 +6904,6 @@ function renderPositionTableAPI(records, aid) {
             '</tr>';
     });
 
-    // 数据来源标注（无链接）
-    html += '<tr><td colspan="7" style="text-align:right;padding:8px;color:#484f58;font-size:11px;">' +
-        '数据来源：qu.iqx.me 实时API [R]</td></tr>';
-
     tbody.innerHTML = html;
 }
 
@@ -6930,7 +6926,6 @@ function renderPositionFallback(aid, acc) {
             '<span>空仓 <strong style="color:#3fb950;">' + (summary.ts || 0) + '手</strong></span>' +
             '<span>浮动盈亏 <strong style="color:' + ((summary.tfp || 0) >= 0 ? '#3fb950' : '#f85149') + ';">' + (((summary.tfp || 0) >= 0 ? '+' : '') + (summary.tfp || 0).toLocaleString()) + '</strong></span>' +
             '<span>保证金 <strong style="color:#e6edf3;">' + ((summary.tm || 0).toLocaleString(undefined, {maximumFractionDigits:0})) + '</strong></span>' +
-            '<span style="color:#484f58;margin-left:auto;font-size:11px;">数据来源：qu.iqx.me 快照 [S]</span>' +
             '</div></td></tr>';
 
         // 列标题
@@ -6953,10 +6948,6 @@ function renderPositionFallback(aid, acc) {
                 '<td style="color:' + fpColor + ';font-weight:700;">' + fpSign + Number(fp).toLocaleString() + '</td>' +
                 '<td style="color:#8b949e;">' + Number(r.m || 0).toLocaleString(undefined, {maximumFractionDigits:0}) + '</td></tr>';
         });
-
-        // 底部来源标注
-        html += '<tr><td colspan="7" style="text-align:right;padding:8px;color:#484f58;font-size:11px;">' +
-            '数据来源：qu.iqx.me 快照 [S]</td></tr>';
 
         tbody.innerHTML = html;
         return;
