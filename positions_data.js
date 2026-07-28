@@ -15229,3 +15229,37 @@ window.EMBEDDED_POSITIONS = {
     setTimeout(enhance, 100);
   }
 })();
+
+/* === 方向/分散度注入：覆盖 renderModalTags，在盘手标签详情页追加持仓方向/分散度（空仓→空仓/未建仓） === */
+(function () {
+  function injectDirTags() {
+    if (typeof window.renderModalTags !== 'function') return;
+    var _orig = window.renderModalTags;
+    window.renderModalTags = function () {
+      _orig();
+      try {
+        var acc = (typeof currentAccountData !== 'undefined') ? currentAccountData : null;
+        if (!acc) return;
+        var trader = (typeof TRADER_TAGS !== 'undefined') && TRADER_TAGS.find(function (t) {
+          return String(t.aid) === String(acc.id);
+        });
+        var tg = trader && trader.tags;
+        var dir = tg && tg.direction ? (tg.direction.primary || tg.direction) : null;
+        var disp = tg && tg.dispersion ? (tg.dispersion.primary || tg.dispersion) : null;
+        var dirText = dir === '空仓' ? '空仓/未建仓' : (dir || '空仓/未建仓');
+        var dispText = disp === '空仓' ? '空仓/未建仓' : (disp || '空仓/未建仓');
+        var sec = document.getElementById('modal-tags-section');
+        if (sec && !sec.querySelector('[data-dir-inject]')) {
+          sec.insertAdjacentHTML('beforeend',
+            '<div data-dir-inject style="font-size:13px;font-weight:600;margin:20px 0 12px;color:var(--text-primary);">持仓方向 / 分散度</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:8px;">'
+            + '<span class="tag-capsule tag-strategy" title="持仓方向">方向：' + dirText + '</span>'
+            + '<span class="tag-capsule tag-method" title="分散度">分散度：' + dispText + '</span>'
+            + '</div>');
+        }
+      } catch (e) { console.warn('[dir-inject]', e); }
+    };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectDirTags);
+  else injectDirTags();
+})();
