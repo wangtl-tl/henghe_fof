@@ -15158,3 +15158,74 @@ window.EMBEDDED_POSITIONS = {
     }
   }
 };
+// ═══════════════════════════════════════════════════
+// 标签体系V3 页面增强 — 自动注入 L1-L6 数据 + 清理UI
+// 生成时间: 2026-07-28 22:27
+// ═══════════════════════════════════════════════════
+(function(){
+  function enhance() {
+    // ── 1. 清除底部调试文字 ──
+    (function cleanBottomText() {
+      var body = document.body;
+      if (!body) return;
+      var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+      var nodesToRemove = [];
+      while (walker.nextNode()) {
+        var txt = walker.currentNode.textContent || '';
+        if ((txt.indexOf('\u4ece\u6570\u636e\u5e93\u5bfc\u51fa') >= 0 || txt.indexOf('\u751f\u6210\u65f6\u95f4') >= 0) &&
+            txt.indexOf('\u8d26\u6237\u7ec4\u5408') >= 0) {
+          nodesToRemove.push(walker.currentNode);
+        }
+      }
+      for (var i = 0; i < nodesToRemove.length; i++) {
+        var node = nodesToRemove[i];
+        var prev = node.previousSibling;
+        var next = node.nextSibling;
+        if (prev && prev.nodeType === 3 && /^\s*;\s*$/.test(prev.textContent)) {
+          prev.parentNode.removeChild(prev);
+        }
+        if (next && next.nodeType === 3 && /^\s*;\s*$/.test(next.textContent)) {
+          next.parentNode.removeChild(next);
+        }
+        node.parentNode.removeChild(node);
+      }
+      if (nodesToRemove.length > 0) {
+        console.log('[\u6807\u7b7e\u4f53\u7cfb] \u2713 \u5df2\u6e05\u9664 ' + nodesToRemove.length + ' \u5904\u5e95\u90e8\u8c03\u8bd5\u6587\u5b57');
+      }
+    })();
+
+    // ── 2. 注入 L1-L6 统计数据 ──
+    var STATS = {"l1": {"S级-卓越": 46, "A级-优秀": 67, "B级-良好": 157, "C级-一般": 164, "D级-劣质": 65}, "l2": {"稳健5-15%": 85, "激进30-50%": 109, "中等15-30%": 103, "失控>50%": 173, "极稳≤5%": 29}, "l3": {"低频趋势": 36, "高频日内": 431, "中频波段": 31, "超低频配置": 1}, "l4": {"日内短线": 86, "趋势跟踪": 101, "波段交易": 174, "多策略混合": 138}, "l5": {"小散<100万": 108, "机构≥2000万": 53, "大户500-2000万": 135, "中等100-500万": 203}, "l6": {"⭐⭐⭐⭐⭐": 7, "⭐⭐⭐⭐": 8, "⭐⭐⭐": 41, "⭐⭐": 113, "⭐": 330}};
+
+    var META = {};
+
+    function set(id, val, color) {
+      var e = document.getElementById(id);
+      if (e) { e.textContent = val; if (color) e.style.color = color; }
+    }
+    function topVal(obj) {
+      var entries = Object.entries(obj || {});
+      entries.sort(function(a,b){ return b[1] - a[1]; });
+      return entries.length ? entries[0] : ['', 0];
+    }
+
+    set('l1-count', topVal(STATS.l1 || {})[1] + '\u4eba', 'var(--accent-blue)');
+    var l2entries = Object.entries(STATS.l2 || {});
+    var l2best = l2entries.find(function(e){ return e[0].indexOf('\u7a33\u5065') >= 0; }) || l2entries[0] || ['',''];
+    set('l2-count', (l2best[1]||0) + '\u4eba', 'var(--accent-purple)');
+    set('l3-count', topVal(STATS.l3 || {})[1] + '\u4eba', 'var(--accent-green)');
+    var l4total = Object.values(STATS.l4 || {}).reduce(function(a,b){return a+b;}, 0);
+    var l4keys = Object.keys(STATS.l4 || {}).length;
+    set('l4-count', l4total + '\u4eba(' + l4keys + '\u7c7b\u7b56\u7565)', 'var(--accent-orange)');
+    set('l5-count', topVal(STATS.l5 || {})[1] + '\u4eba', '#db61a2');
+    set('l6-count', topVal(STATS.l6 || {})[1] + '\u4eba', '#39d353');
+
+    console.log('[\u6807\u7b7e\u4f53\u7cfbV3] \u2713 L1-L6\u6570\u636e\u5df2\u6ce8\u5165 | \u603b\u6570:' + (META.total_valid || 499) + ' | \u6dd8\u6c70:' + (META.eliminate_count || 0));
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', enhance);
+  } else {
+    setTimeout(enhance, 100);
+  }
+})();
