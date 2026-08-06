@@ -4306,9 +4306,9 @@ function renderFollowPositions(data) {
 
     // 渲染行
     tbody.innerHTML = positions.map((p, idx) => {
-        const dirColor = p.direction === 'buy' ? '#f85149' : '#3fb950';
-        const dirText = p.direction === 'buy' ? '多' : '空';
-        const dirIcon = p.direction === 'buy' ? '▲' : '▼';
+        const dirColor = p.direction === 'buy' ? '#f85149' : p.direction === 'sell' ? '#3fb950' : '#8b949e';
+        const dirText = p.direction === 'buy' ? '多' : p.direction === 'sell' ? '空' : '中性';
+        const dirIcon = p.direction === 'buy' ? '▲' : p.direction === 'sell' ? '▼' : '⇄';
 
         // 手数变化标签
         let changeBadge = '';
@@ -4349,7 +4349,7 @@ function renderFollowPositions(data) {
                 </div>
             </td>
             <td><span style="color:${dirColor};font-weight:700;font-size:13px;">${dirIcon}${dirText}</span></td>
-            <td class="num-highlight num-value-large">${p.lots.toLocaleString()}</td>
+            <td class="num-highlight num-value-large">${p.direction === 'neutral' ? ((p.buy||0) + '/' + (p.sell||0)) : p.lots.toLocaleString()}</td>
             <td>${changeBadge}</td>
             <td class="num-highlight num-value-normal" style="color:${dirColor}">${p.weight}%</td>
             <td class="num-highlight">${formatPosMoney(p.market_value || p.position_value)}</td>
