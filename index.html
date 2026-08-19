@@ -535,7 +535,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
         </div>
         <div class="freshness-item">
             <span class="freshness-label">基准日期</span>
-            <span class="freshness-value">2026-05-13</span>
+            <span class="freshness-value" id="freshness-base-date">--</span>
         </div>
         <div class="freshness-item">
             <span class="freshness-label">组合账户</span>
@@ -4038,6 +4038,17 @@ function renderFollowAll() {
 
 // 更新数据新鲜度状态条
 function updateFreshnessBar(validCount, invalidCount, totalCount) {
+    // 基准日期：所有账户净值最新日期的最大值（说明书v3.0定义：最近一次数据更新日期）
+    const bdEl = document.getElementById('freshness-base-date');
+    if (bdEl && !bdEl.dataset.filled) {
+        const nav = window.EMBEDDED_ACCOUNT_NAV || {};
+        let maxDate = '';
+        Object.keys(nav).forEach(aid => {
+            const ds = (nav[aid] && nav[aid].dates) || [];
+            if (ds.length && ds[ds.length - 1] > maxDate) maxDate = ds[ds.length - 1];
+        });
+        if (maxDate) { bdEl.textContent = maxDate; bdEl.dataset.filled = '1'; }
+    }
     const el = document.getElementById('freshness-portfolio-count');
     if (!el) return;
     if (invalidCount === 0) {
