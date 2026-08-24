@@ -1627,15 +1627,16 @@ function renderFollowAll() {
     const data = portfolioDetailData[currentFollowPortfolio];
     if (!data) return;
     
-    // 获取有效账户(30天内有更新)
-    const validAccounts = getValidAccounts(data.accounts);
+    // 组合成员应全部展示：用全部账户，仅以 _stale 标记近期无持仓更新的盘手（不剔除、不影响净值/指标）
+    const allAccounts = (data.accounts || []).map(a => ({ ...a, _stale: !isAccountValid(a.id) }));
+    const validCount = allAccounts.filter(a => !a._stale).length;
     const invalidAccounts = getInvalidAccounts(data.accounts);
-    
+
     // 更新数据新鲜度状态条
-    updateFreshnessBar(validAccounts.length, invalidAccounts.length, data.accounts.length);
-    
-    // 创建包含有效账户的副本传递给各渲染函数
-    const filteredData = { ...data, accounts: validAccounts };
+    updateFreshnessBar(validCount, invalidAccounts.length, data.accounts.length);
+
+    // 创建包含全部账户的副本传递给各渲染函数（净值/指标来自后端 nav_values，不受过滤影响）
+    const filteredData = { ...data, accounts: allAccounts };
     
     renderPortfolioCards();
     renderRiskRules(filteredData);
@@ -1850,7 +1851,8 @@ function renderFollowTraders(data) {
         const rr = dd > 0 ? acc.yield / dd : 0;
         const winRate = acc.win_rate != null ? acc.win_rate : 0;
         const contribution = acc.contribution != null ? acc.contribution : 0;
-        return '<tr>' +
+        const rowStyle = acc._stale ? ' style="opacity:0.55;"' : '';
+        return '<tr' + rowStyle + '>' +
             '<td><span class="rank-badge ' + rank + '">' + (i + 1) + '</span></td>' +
             '<td><strong class="clickable-account" onclick="showAccountDetail(\'' + acc.id + '\',\'' + safeName + '\',\'portfolio\',{yield:' + (acc.yield||0) + ',drawdown:' + (acc.drawdown||0) + ',weight:' + (acc.weight||0) + ',win_rate:' + (acc.win_rate||50) + ',cluster:' + (acc.cluster||1) + ',contribution:' + (acc.contribution||0) + '})">' + accName + '</strong><br><small style="color:#8b949e">' + acc.id + '</small></td>' +
             '<td><div class="weight-bar"><div class="weight-bar-inner"><div class="weight-bar-fill" style="width:' + (acc.weight * 2) + '%"></div></div><span>' + acc.weight + '%</span></div></td>' +
@@ -2975,11 +2977,11 @@ function renderPortfolioAll() {
         const styleTag = PORTFOLIO_STYLE_TAGS[key] || '';
         const sharpe = (m.sharpe || 0).toFixed(2);
         const winRate = (m.win_rate || 0).toFixed(1);
-        // 使用过滤后的有效账户数
-        const validAccs = getValidAccounts(d.accounts || []);
-        const invalidCount = getInvalidAccounts(d.accounts || []).length;
-        const totalAccs = (d.accounts || []).length;
-        const accDisplay = invalidCount > 0 ? `${validAccs.length}/${totalAccs}` : `${totalAccs}`;
+        // 组合成员全部展示（不过滤），过期仅作角标提示
+        const allAccs = d.accounts || [];
+        const invalidCount = getInvalidAccounts(allAccs).length;
+        const totalAccs = allAccs.length;
+        const accDisplay = `${totalAccs}`;
         return {
             key, name: PORTFOLIO_NAMES[key] || d.name || key,
             accounts: accDisplay,
@@ -3133,10 +3135,10 @@ function selectPortfolio(key) {
     const data = portfolioDetailData[key];
     if (!data) return;
     
-    // 获取有效账户
-    const validAccounts = getValidAccounts(data.accounts || []);
+    // 组合成员全部展示：用全部账户，_stale 标记近期无持仓更新（不剔除）
+    const allAccounts = (data.accounts || []).map(a => ({ ...a, _stale: !isAccountValid(a.id) }));
     const invalidAccounts = getInvalidAccounts(data.accounts || []);
-    const filteredData = { ...data, accounts: validAccounts };
+    const filteredData = { ...data, accounts: allAccounts };
 
     // 1. 更新标题
     document.getElementById('portfolio-title').textContent = (PORTFOLIO_NAMES[key] || key) + ' - 净值与回撤';
@@ -3385,21 +3387,21 @@ function renderPortfolioAccounts(data, invalidAccounts) {
     const countEl = document.getElementById('portfolio-account-count');
     if (!listEl) return;
     
+    // 组合成员全部展示：data.accounts 已含全部成员（含 _stale 标记近期无持仓更新的）
     const accs = data.accounts || [];
-    const invalid = invalidAccounts || [];
-    const totalAccs = accs.length + invalid.length;
+    const staleCount = accs.filter(a => a._stale).length;
     
     if (countEl) {
-        if (invalid.length > 0) {
-            countEl.textContent = `${accs.length}有效/${totalAccs}总`;
+        if (staleCount > 0) {
+            countEl.textContent = `${accs.length} 总 · ${staleCount} 过期`;
             countEl.style.color = 'var(--accent-orange)';
         } else {
-            countEl.textContent = accs.length;
+            countEl.textContent = accs.length + ' 个账户';
             countEl.style.color = '';
         }
     }
 
-    if (totalAccs === 0) {
+    if (accs.length === 0) {
         listEl.innerHTML = '<div style="color:#8b949e;text-align:center;padding:30px;">暂无账户数据</div>';
         return;
     }
@@ -3426,46 +3428,31 @@ function renderPortfolioAccounts(data, invalidAccounts) {
         </thead>
         <tbody>`;
     
-    // 先显示有效账户
-    if (sorted.length > 0) {
-        html += sorted.map((a, i) => {
-            const ddVal = Math.abs(a.drawdown || 1);
-            const rr = ddVal > 0 ? (a.yield / ddVal).toFixed(2) : '0.00';
-            const contVal = a.contribution != null ? a.contribution : 0;
-            const contPct = totalContribution > 0 ? (contVal / totalContribution * 100).toFixed(1) : 0;
-            const winRateVal = a.win_rate != null ? a.win_rate : 0;
-            const clusterColor = CLUSTER_COLORS[a.cluster] || '#8b949e';
-            const clusterName = CLUSTER_NAMES[a.cluster] || '未知';
-            const extraStr = '{yield:' + (a.yield||0) + ',drawdown:' + (a.drawdown||0) + ',weight:' + (a.weight||0) + ',win_rate:' + (a.win_rate||50) + ',cluster:' + (a.cluster||1) + ',contribution:' + (a.contribution||0) + '}';
-            return '<tr>' +
-                '<td><span style="font-size:10px;color:#8b949e;">' + (i + 1) + '</span></td>' +
-                '<td><strong class="clickable-account" style="font-size:12px;" onclick="showAccountDetail(\'' + a.id + '\',\'' + (a.name||'').replace(/'/g, "\\'") + '\',\'portfolio\',' + extraStr + ')">' + a.name + '</strong><br><small style="color:#8b949e;">' + a.id + '</small></td>' +
-                '<td><div style="display:flex;align-items:center;gap:4px;"><div style="width:40px;height:6px;background:#21262d;border-radius:2px;overflow:hidden;"><div style="width:' + Math.min(100, (a.weight||0) * 2) + '%;height:100%;background:#58a6ff;border-radius:2px;"></div></div><span style="font-size:10px;color:#8b949e;">' + (a.weight||0) + '%</span></div></td>' +
-                '<td class="positive">+' + (a.yield||0) + '%</td>' +
-                '<td class="negative">' + (a.drawdown||0) + '%</td>' +
-                '<td><span style="color:#d29922;font-size:11px;">' + winRateVal.toFixed(1) + '%</span></td>' +
-                '<td><div style="display:flex;align-items:center;gap:4px;"><div style="width:40px;height:6px;background:#21262d;border-radius:2px;overflow:hidden;"><div style="width:' + Math.min(100, contPct) + '%;height:100%;background:#3fb950;border-radius:2px;"></div></div><span style="font-size:10px;color:#3fb950;">+' + contVal.toFixed(1) + '%</span></div></td>' +
-                '<td><span style="font-size:10px;padding:1px 5px;border-radius:2px;background:#3fb95022;color:#3fb950;border:0.5px solid #3fb95044;">✓有效</span></td>' +
-            '</tr>';
-        }).join('');
-    }
-    
-    // 再显示无效账户(标红)
-    if (invalid.length > 0) {
-        html += invalid.map((a, i) => {
-            const extraStr = '{yield:' + (a.yield||0) + ',drawdown:' + (a.drawdown||0) + ',weight:0,win_rate:0,cluster:' + (a.cluster||1) + ',contribution:0}';
-            return '<tr style="opacity:0.6;">' +
-                '<td><span style="font-size:10px;color:#8b949e;">' + (sorted.length + i + 1) + '</span></td>' +
-                '<td><strong class="clickable-account" style="font-size:12px;text-decoration:line-through;" onclick="showAccountDetail(\'' + a.id + '\',\'' + (a.name||'').replace(/'/g, "\\'") + '\',\'portfolio\',' + extraStr + ')">' + a.name + '</strong><br><small style="color:#8b949e;">' + a.id + '</small></td>' +
-                '<td><span style="color:#f85149;font-size:10px;">已剔除</span></td>' +
-                '<td class="positive">+' + (a.yield||0) + '%</td>' +
-                '<td class="negative">' + (a.drawdown||0) + '%</td>' +
-                '<td><span style="color:#8b949e;font-size:11px;">--</span></td>' +
-                '<td><span style="color:#f85149;font-size:10px;">-</span></td>' +
-                '<td><span style="font-size:10px;padding:1px 5px;border-radius:2px;background:#f8514922;color:#f85149;border:0.5px solid #f8514944;">⏰过期</span></td>' +
-            '</tr>';
-        }).join('');
-    }
+    // 全部成员（含过期），过期仅灰显 + 角标，不再剔除
+    html += sorted.map((a, i) => {
+        const ddVal = Math.abs(a.drawdown || 1);
+        const rr = ddVal > 0 ? (a.yield / ddVal).toFixed(2) : '0.00';
+        const contVal = a.contribution != null ? a.contribution : 0;
+        const contPct = totalContribution > 0 ? (contVal / totalContribution * 100).toFixed(1) : 0;
+        const winRateVal = a.win_rate != null ? a.win_rate : 0;
+        const clusterColor = CLUSTER_COLORS[a.cluster] || '#8b949e';
+        const clusterName = CLUSTER_NAMES[a.cluster] || '未知';
+        const extraStr = '{yield:' + (a.yield||0) + ',drawdown:' + (a.drawdown||0) + ',weight:' + (a.weight||0) + ',win_rate:' + (a.win_rate||50) + ',cluster:' + (a.cluster||1) + ',contribution:' + (a.contribution||0) + '}';
+        const statusBadge = a._stale
+            ? '<span style="font-size:10px;padding:1px 5px;border-radius:2px;background:#d2992222;color:#d29922;border:0.5px solid #d2992244;">⏰过期</span>'
+            : '<span style="font-size:10px;padding:1px 5px;border-radius:2px;background:#3fb95022;color:#3fb950;border:0.5px solid #3fb95044;">✓有效</span>';
+        const rowStyle = a._stale ? ' style="opacity:0.6;"' : '';
+        return '<tr' + rowStyle + '>' +
+            '<td><span style="font-size:10px;color:#8b949e;">' + (i + 1) + '</span></td>' +
+            '<td><strong class="clickable-account" style="font-size:12px;" onclick="showAccountDetail(\'' + a.id + '\',\'' + (a.name||'').replace(/'/g, "\\'") + '\',\'portfolio\',' + extraStr + ')">' + a.name + '</strong><br><small style="color:#8b949e;">' + a.id + '</small></td>' +
+            '<td><div style="display:flex;align-items:center;gap:4px;"><div style="width:40px;height:6px;background:#21262d;border-radius:2px;overflow:hidden;"><div style="width:' + Math.min(100, (a.weight||0) * 2) + '%;height:100%;background:#58a6ff;border-radius:2px;"></div></div><span style="font-size:10px;color:#8b949e;">' + (a.weight||0) + '%</span></div></td>' +
+            '<td class="positive">+' + (a.yield||0) + '%</td>' +
+            '<td class="negative">' + (a.drawdown||0) + '%</td>' +
+            '<td><span style="color:#d29922;font-size:11px;">' + winRateVal.toFixed(1) + '%</span></td>' +
+            '<td><div style="display:flex;align-items:center;gap:4px;"><div style="width:40px;height:6px;background:#21262d;border-radius:2px;overflow:hidden;"><div style="width:' + Math.min(100, contPct) + '%;height:100%;background:#3fb950;border-radius:2px;"></div></div><span style="font-size:10px;color:#3fb950;">+' + contVal.toFixed(1) + '%</span></div></td>' +
+            '<td>' + statusBadge + '</td>' +
+        '</tr>';
+    }).join('');
     
     html += '</tbody></table>';
     listEl.innerHTML = html;
