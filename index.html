@@ -547,28 +547,34 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .summary-bar b { font-family: Consolas, monospace; color: #1f2328; }
 .summary-bar .meta { margin-left: auto; color: #8b949e; font-size: 11px; }
 
-/* 账户概况 3 栏（原网站风格） */
-.overview-3col { display: grid; grid-template-columns: 1fr 1fr 0.86fr; gap: 20px; }
-.overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; }
-.overview-3col .col-title { font-size: 13px; font-weight: 600; color: #1f2328; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eaeef2; }
+/* 账户概况 3 栏（对齐参考图：两列网格 KV + 横向进度条） */
+.overview-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; }
+.overview-3col .col-title { font-size: 14px; font-weight: 600; color: #1f2328; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #eaeef2; }
+/* 两列 KV 布局（交易统计 / 交易分析）：每行精确控制，与参考图一致 */
+.overview-3col .kv-rows { display: flex; flex-direction: column; gap: 11px; }
+.overview-3col .kv-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.overview-3col .kv-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; line-height: 1.45; }
+.overview-3col .kv-item .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
+.overview-3col .kv-item .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; text-align: right; white-space: nowrap; }
+.overview-3col .kv-item .val.up { color: #cf222e; }
+.overview-3col .kv-item .val.down { color: #1a7f37; }
+.overview-3col .kv-item .val.score { color: #0969da; font-size: 13px; }
+.overview-3col .kv-item .val.commission { color: #1a7f37; }
+/* 兼容旧 .row（如有其他地方使用） */
 .overview-3col .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; gap: 12px; }
 .overview-3col .row .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
 .overview-3col .row .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; white-space: nowrap; }
 .overview-3col .row .val.up { color: #cf222e; }
 .overview-3col .row .val.down { color: #1a7f37; }
-.overview-3col .row .val.score { color: #0969da; font-size: 14px; }
-.overview-3col .row .val.commission { color: #1a7f37; }
-.overview-3col .progress { height: 6px; background: #eaeef2; border-radius: 3px; margin-top: 4px; }
-.overview-3col .progress > div { height: 100%; background: #0969da; border-radius: 3px; }
-.overview-3col .feat-row { padding: 8px 0; }
-.overview-3col .feat-row .feat-label { font-size: 11px; color: #57606a; margin-bottom: 3px; }
-.overview-3col .feat-bar { display: flex; align-items: center; gap: 8px; }
-.overview-3col .feat-track { flex: 1; height: 6px; background: #eaeef2; border-radius: 3px; overflow: hidden; }
-.overview-3col .feat-fill { height: 100%; background: #0969da; border-radius: 3px; }
-.overview-3col .feat-pct { font-size: 11px; font-family: Consolas, monospace; color: #1f2328; min-width: 48px; text-align: right; }
+/* 交易特征：标签 + 进度条 + 百分比 横向一行 */
+.overview-3col .feat-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.overview-3col .feat-row .feat-label { flex: 0 0 150px; font-size: 12px; color: #57606a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.overview-3col .feat-bar { flex: 1; display: flex; align-items: center; }
+.overview-3col .feat-track { width: 100%; height: 8px; background: #eaeef2; border-radius: 4px; overflow: hidden; }
+.overview-3col .feat-fill { height: 100%; background: #0969da; border-radius: 4px; }
+.overview-3col .feat-pct { flex: 0 0 54px; font-size: 12px; font-family: Consolas, monospace; color: #1f2328; text-align: right; }
 .overview-3col .feat-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid #eaeef2; font-size: 11px; color: #8b949e; line-height: 1.6; }
-.overview-3col .feat-summary { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eaeef2; }
-.overview-3col .feat-summary .summary-title { font-size: 11px; color: #57606a; margin-bottom: 4px; font-weight: 500; }
 
 /* 风控能力风险指标卡 */
 .risk-cards-grid .risk-card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; text-align: left; }
@@ -4601,7 +4607,7 @@ function renderModalNavChart() {
     });
 }
 
-// ========== 账户概况 3 栏（原网站"账户概况"tab，对照截图）==========
+// ========== 账户概况 3 栏（对齐参考图：两列网格 KV + 横向进度条）==========
 function renderAccountOverview() {
     const acc = currentAccountData;
     if (!acc) return;
@@ -4615,61 +4621,88 @@ function renderAccountOverview() {
     }
     const sign = v => (v >= 0 ? '+' : '');
     const col = v => (v >= 0 ? 'up' : 'down');
-    // 交易特征进度条
+    // KV 项：label | value（cls 控制颜色）
+    const kv = (label, val, cls) => '<div class="kv-item"><span class="label">' + label + '</span><span class="val ' + (cls || '') + '">' + val + '</span></div>';
+    const row = (...items) => '<div class="kv-row">' + items.join('') + '</div>';
+    // 交易特征进度条（标签与参考图一致）
     const featRows = [
-        { label: '程序化交易', v: ov.prog_ratio },
-        { label: '跨月套利', v: ov.spread_ratio },
+        { label: '程序化交易的概率', v: ov.prog_ratio },
+        { label: '跨月套利比例', v: ov.spread_ratio },
         { label: '高频比例', v: ov.high_freq_ratio },
         { label: '日内比例', v: ov.day_ratio },
-        { label: '隔夜(持仓1-2天)', v: ov.overnight_ratio },
-        { label: '短线(持仓2-3天)', v: ov.short_ratio },
-        { label: '趋势(持仓≥3天)', v: ov.trend_ratio },
+        { label: '隔夜比例(持仓1-2天)', v: ov.overnight_ratio },
+        { label: '短趋比例(持仓2-3天)', v: ov.short_ratio },
+        { label: '趋势比例(持仓3天以上)', v: ov.trend_ratio },
     ];
     const featHtml = featRows.map(r =>
-        '<div class="feat-row"><div class="feat-label">' + r.label + '</div>' +
-        '<div class="feat-bar"><div class="feat-track"><div class="feat-fill" style="width:' + Math.min(100, r.v || 0) + '%;"></div></div>' +
-        '<div class="feat-pct">' + (r.v || 0).toFixed(2) + '%</div></div></div>'
+        '<div class="feat-row">' +
+            '<div class="feat-label">' + r.label + '</div>' +
+            '<div class="feat-bar"><div class="feat-track"><div class="feat-fill" style="width:' + Math.min(100, r.v || 0) + '%;"></div></div></div>' +
+            '<div class="feat-pct">' + (r.v || 0).toFixed(2) + '%</div>' +
+        '</div>'
     ).join('');
     el.innerHTML =
         '<div class="overview-3col">' +
             // 交易统计
             '<div class="col"><div class="col-title">交易统计</div>' +
-                '<div class="row"><span class="label">综合积分</span><span class="val score">' + (ov.score || 0) + '</span></div>' +
-                '<div class="row"><span class="label">累计净利润</span><span class="val ' + col(ov.cum_profit_wan) + '">' + sign(ov.cum_profit_wan) + (ov.cum_profit_wan || 0).toFixed(2) + ' 万</span></div>' +
-                '<div class="row"><span class="label">参考收益率</span><span class="val ' + col(ov.ref_return) + '">' + sign(ov.ref_return) + (ov.ref_return || 0).toFixed(2) + '%</span></div>' +
-                '<div class="row"><span class="label">年化收益率</span><span class="val ' + col(ov.annual_return) + '">' + sign(ov.annual_return) + (ov.annual_return || 0).toFixed(2) + '%</span></div>' +
-                '<div class="row"><span class="label">累计净值</span><span class="val">' + (ov.final_nav || 0).toFixed(4) + '</span></div>' +
-                '<div class="row"><span class="label">最大回撤</span><span class="val down">' + (ov.mdd || 0).toFixed(2) + '%</span></div>' +
-                '<div class="row"><span class="label">收益回撤比</span><span class="val">' + (ov.rr || 0).toFixed(4) + '</span></div>' +
-                '<div class="row"><span class="label">累计手续费</span><span class="val down">' + (ov.cum_commission_wan || 0).toFixed(2) + ' 万</span></div>' +
-                '<div class="row"><span class="label">费用占比</span><span class="val commission">' + (ov.commission_ratio || 0).toFixed(2) + '%</span></div>' +
-                '<div class="row"><span class="label">参赛日期</span><span class="val">' + (ov.first_date || '--') + '</span></div>' +
-                '<div class="row"><span class="label">截止日期</span><span class="val">' + (ov.last_date || '--') + '</span></div>' +
+                '<div class="kv-rows">' +
+                    row(
+                        kv('综合积分', (ov.score || 0), 'score'),
+                        kv('累计净利润', sign(ov.cum_profit_wan) + (ov.cum_profit_wan || 0).toFixed(2) + ' 万', col(ov.cum_profit_wan))
+                    ) +
+                    row(
+                        kv('参考收益率', sign(ov.ref_return) + (ov.ref_return || 0).toFixed(2) + '%', col(ov.ref_return)),
+                        kv('年化收益率', sign(ov.annual_return) + (ov.annual_return || 0).toFixed(2) + '%', col(ov.annual_return))
+                    ) +
+                    row(
+                        kv('累计净值', (ov.final_nav || 0).toFixed(4)),
+                        kv('最大回撤', (ov.mdd || 0).toFixed(2) + '%', 'up')
+                    ) +
+                    row(
+                        kv('收益回撤比', (ov.rr || 0).toFixed(4)),
+                        kv('累计手续费', (ov.cum_commission_wan || 0).toFixed(2) + ' 万', 'commission')
+                    ) +
+                    row(
+                        kv('费用占比', (ov.commission_ratio || 0).toFixed(2) + '%', 'commission'),
+                        ''
+                    ) +
+                    row(
+                        kv('参赛日期', (ov.first_date || '--')),
+                        kv('截止日期', (ov.last_date || '--'))
+                    ) +
+                '</div>' +
             '</div>' +
             // 交易分析
             '<div class="col"><div class="col-title">交易分析</div>' +
-                '<div class="row"><span class="label">亏损天数</span><span class="val down">' + (ov.down_days || 0) + '</span></div>' +
-                '<div class="row"><span class="label">盈利天数</span><span class="val up">' + (ov.up_days || 0) + '</span></div>' +
-                '<div class="row"><span class="label">累计交易天数</span><span class="val">' + (ov.trade_days || 0) + '</span></div>' +
-                '<div class="row"><span class="label">有数据的天数</span><span class="val">' + (ov.data_days || 0) + '</span></div>' +
-                '<div class="row"><span class="label">日均隔夜持仓</span><span class="val">' + (ov.hold_mean || 0).toFixed(2) + '</span></div>' +
-                '<div class="row"><span class="label">最大隔夜持仓</span><span class="val">' + (ov.hold_max || 0) + '</span></div>' +
-                '<div class="row"><span class="label">日均换手率</span><span class="val">' + (ov.turnover || 0).toFixed(1) + '%</span></div>' +
-                '<div class="row"><span class="label">日均操作权益</span><span class="val">' + (ov.equity_mean || 0) + ' 万</span></div>' +
-                '<div class="row"><span class="label">最大操作权益</span><span class="val">' + (ov.equity_max || 0) + ' 万</span></div>' +
-                '<div class="row"><span class="label">最新操作权益</span><span class="val">' + (ov.equity_latest || 0) + ' 万</span></div>' +
-                '<div class="row"><span class="label">存续合计</span><span class="val ' + col(ov.cum_profit) + '">' + sign(ov.cum_profit) + ((ov.cum_profit || 0) / 10000).toFixed(2) + ' 万</span></div>' +
-                '<div class="row"><span class="label">盈亏系数</span><span class="val">' + (ov.fprofit_coef || 0) + '</span></div>' +
+                '<div class="kv-rows">' +
+                    row(
+                        kv('亏损天数', (ov.down_days || 0)),
+                        kv('盈利天数', (ov.up_days || 0), 'up')
+                    ) +
+                    row(
+                        kv('累计交易天数', (ov.trade_days || 0)),
+                        kv('有数据的天数', (ov.data_days || 0))
+                    ) +
+                    row(
+                        kv('日均隔夜持仓', (ov.hold_mean || 0).toFixed(2)),
+                        kv('最大隔夜持仓', (ov.hold_max || 0))
+                    ) +
+                    row(
+                        kv('日均换手率', (ov.turnover || 0).toFixed(1) + '%'),
+                        kv('日均操作权益', (ov.equity_mean || 0) + ' 万')
+                    ) +
+                    row(
+                        kv('最大操作权益', (ov.equity_max || 0) + ' 万'),
+                        kv('最新操作权益', (ov.equity_latest || 0) + ' 万')
+                    ) +
+                    row(
+                        kv('存续合计', sign(ov.cum_profit) + ((ov.cum_profit || 0) / 10000).toFixed(2) + ' 万', 'up'),
+                        kv('盈亏系数', (ov.fprofit_coef || 0))
+                    ) +
+                '</div>' +
             '</div>' +
             // 交易特征
             '<div class="col"><div class="col-title">交易特征</div>' + featHtml +
-                '<div class="feat-summary">' +
-                    '<div class="summary-title">关键汇总</div>' +
-                    '<div class="row"><span class="label">综合积分</span><span class="val score">' + (ov.score || 0) + '</span></div>' +
-                    '<div class="row"><span class="label">卡玛比率</span><span class="val">' + (ov.rr || 0).toFixed(2) + '</span></div>' +
-                    '<div class="row"><span class="label">回撤修复</span><span class="val">' + (ov.mdd_recover_days || 0) + ' 天</span></div>' +
-                    '<div class="row"><span class="label">VaR 95%</span><span class="val">' + (ov.var95 || 0).toFixed(2) + '%</span></div>' +
-                '</div>' +
                 '<div class="feat-footer">基于 ' + (ov.trade_count || 0) + ' 笔成交<br>截止 ' + (ov.last_date || '--') + '</div></div>' +
         '</div>';
 }
