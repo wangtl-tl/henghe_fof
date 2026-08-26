@@ -547,7 +547,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 
 /* 账户概况 3 栏（原网站风格） */
 .overview-3col { display: grid; grid-template-columns: 1.05fr 1.05fr 0.9fr; gap: 12px; }
-.overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; }
+.overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; }
 .overview-3col .col-title { font-size: 13px; font-weight: 600; color: #1f2328; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eaeef2; }
 .overview-3col .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; gap: 12px; }
 .overview-3col .row .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
@@ -564,7 +564,9 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .overview-3col .feat-track { flex: 1; height: 6px; background: #eaeef2; border-radius: 3px; overflow: hidden; }
 .overview-3col .feat-fill { height: 100%; background: #0969da; border-radius: 3px; }
 .overview-3col .feat-pct { font-size: 11px; font-family: Consolas, monospace; color: #1f2328; min-width: 48px; text-align: right; }
-.overview-3col .feat-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eaeef2; font-size: 11px; color: #8b949e; line-height: 1.6; }
+.overview-3col .feat-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid #eaeef2; font-size: 11px; color: #8b949e; line-height: 1.6; }
+.overview-3col .feat-summary { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eaeef2; }
+.overview-3col .feat-summary .summary-title { font-size: 11px; color: #57606a; margin-bottom: 4px; font-weight: 500; }
 
 /* 风控能力风险指标卡 */
 .risk-cards-grid .risk-card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; text-align: left; }
@@ -4659,6 +4661,13 @@ function renderAccountOverview() {
             '</div>' +
             // 交易特征
             '<div class="col"><div class="col-title">交易特征</div>' + featHtml +
+                '<div class="feat-summary">' +
+                    '<div class="summary-title">关键汇总</div>' +
+                    '<div class="row"><span class="label">综合积分</span><span class="val score">' + (ov.score || 0) + '</span></div>' +
+                    '<div class="row"><span class="label">卡玛比率</span><span class="val">' + (ov.rr || 0).toFixed(2) + '</span></div>' +
+                    '<div class="row"><span class="label">回撤修复</span><span class="val">' + (ov.mdd_recover_days || 0) + ' 天</span></div>' +
+                    '<div class="row"><span class="label">VaR 95%</span><span class="val">' + (ov.var95 || 0).toFixed(2) + '%</span></div>' +
+                '</div>' +
                 '<div class="feat-footer">基于 ' + (ov.trade_count || 0) + ' 笔成交<br>截止 ' + (ov.last_date || '--') + '</div></div>' +
         '</div>';
 }
