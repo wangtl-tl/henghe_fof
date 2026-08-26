@@ -571,6 +571,12 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .risk-cards-grid .risk-card .rc-sub { font-size: 11px; color: #8b949e; margin-top: 2px; }
 .risk-cards-grid .risk-card .rc-value.up { color: #cf222e; }
 .risk-cards-grid .risk-card .rc-value.down { color: #1a7f37; }
+
+/* ECharts 容器兜底高度：hidden→visible 切换时浏览器 layout 是异步，避免 init 时拿到 0 尺寸 */
+#modal-pnl-chart, #modal-dd-chart, #modal-variety-pnl,
+#modal-variety-contrib, #modal-sector-pie, #modal-hold-dist {
+    min-height: 240px;
+}
 .account-metrics-table th { background: #f6f8fa; color: #57606a; font-weight: 500; }
 .account-metrics-table td:first-child { color: #57606a; width: 120px; }
 .account-metrics-table td:last-child { font-weight: 600; }
@@ -4409,11 +4415,16 @@ function switchModalTab(tabId) {
     if (content) content.classList.add('active');
     setTimeout(() => {
         if (tabId === 'overview' && modalNavChart) modalNavChart.resize();
-        // 切到任一含 ECharts 的 tab 时重新渲染（hidden init 后 0 尺寸，dispose+reinit 才能显示）
-        if (tabId === 'pnl' && typeof renderPnlAnalysis === 'function') renderPnlAnalysis();
-        else if (tabId === 'risk' && typeof renderRiskCapacity === 'function') renderRiskCapacity();
-        else if (tabId === 'variety' && typeof renderVarietyAnalysis === 'function') renderVarietyAnalysis();
-    }, 100);
+        // 切到任一含 ECharts 的 tab 时重新渲染
+        // 用 requestAnimationFrame + 200ms 双重保险等 layout 完成（hidden 容器 display:block 后浏览器 layout 是异步）
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (tabId === 'pnl' && typeof renderPnlAnalysis === 'function') renderPnlAnalysis();
+                else if (tabId === 'risk' && typeof renderRiskCapacity === 'function') renderRiskCapacity();
+                else if (tabId === 'variety' && typeof renderVarietyAnalysis === 'function') renderVarietyAnalysis();
+            }, 200);
+        });
+    }, 0);
 }
 
 function renderModalOverview() {
@@ -4668,6 +4679,8 @@ function renderPnlAnalysis() {
                 const base = nav[0];
                 const cumRet = nav.map(v => +(((v/base)-1)*100).toFixed(2));
                 modalPnlChartInst = echarts.init(el1);
+                setTimeout(() => { modalPnlChartInst.resize(); }, 50);
+                setTimeout(() => { modalPnlChartInst.resize(); }, 50);
                 modalPnlChartInst.setOption({
                     title: { text: '累计盈亏 (%)', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                     tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 } },
@@ -4701,6 +4714,8 @@ function renderPnlAnalysis() {
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyPnlInst = echarts.init(el2);
+            setTimeout(() => { modalVarietyPnlInst.resize(); }, 50);
+            setTimeout(() => { modalVarietyPnlInst.resize(); }, 50);
             modalVarietyPnlInst.setOption({
                 title: { text: '期货品种(平仓)盈亏', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4744,6 +4759,8 @@ function renderVarietyAnalysis() {
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyContribInst = echarts.init(el1);
+            setTimeout(() => { modalVarietyContribInst.resize(); }, 50);
+            setTimeout(() => { modalVarietyContribInst.resize(); }, 50);
             modalVarietyContribInst.setOption({
                 title: { text: '品种盈亏贡献 Top10', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4772,6 +4789,8 @@ function renderVarietyAnalysis() {
         } else {
             const data = ov.sector_pnl.map(s => ({ name: s.sector, value: Math.abs(s.profit) }));
             modalSectorPieInst = echarts.init(el2);
+            setTimeout(() => { modalSectorPieInst.resize(); }, 50);
+            setTimeout(() => { modalSectorPieInst.resize(); }, 50);
             modalSectorPieInst.setOption({
                 title: { text: '板块盈亏分布', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'item', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4799,6 +4818,8 @@ function renderVarietyAnalysis() {
                 { name: '趋势(≥3天)', v: ov.trend_ratio },
             ].filter(d => d.v > 0);
             modalHoldDistInst = echarts.init(el3);
+            setTimeout(() => { modalHoldDistInst.resize(); }, 50);
+            setTimeout(() => { modalHoldDistInst.resize(); }, 50);
             modalHoldDistInst.setOption({
                 title: { text: '持仓周期分布', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4833,6 +4854,8 @@ function renderRiskCapacity() {
                 const ddSeries = nav.map(v => { if (v > peak) peak = v; return +(((v/peak)-1)*100).toFixed(2); });
                 const maxDd = Math.min(...ddSeries);
                 modalDdChartInst = echarts.init(el1);
+                setTimeout(() => { modalDdChartInst.resize(); }, 50);
+                setTimeout(() => { modalDdChartInst.resize(); }, 50);
                 modalDdChartInst.setOption({
                     title: { text: '连续回撤 (%) · 历史最大 ' + maxDd.toFixed(2) + '%', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                     tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 }, valueFormatter: v => v.toFixed(2)+'%' },
