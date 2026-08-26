@@ -548,8 +548,8 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .overview-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; }
 .overview-3col .col-title { font-size: 13px; font-weight: 600; color: #1f2328; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eaeef2; }
-.overview-3col .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; }
-.overview-3col .row .label { color: #57606a; }
+.overview-3col .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; gap: 12px; }
+.overview-3col .row .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
 .overview-3col .row .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; }
 .overview-3col .row .val.up { color: #cf222e; }
 .overview-3col .row .val.down { color: #1a7f37; }
@@ -4409,17 +4409,10 @@ function switchModalTab(tabId) {
     if (content) content.classList.add('active');
     setTimeout(() => {
         if (tabId === 'overview' && modalNavChart) modalNavChart.resize();
-        // 切到任一含 ECharts 的 tab 时 resize（hidden init 后 0 尺寸不显示）
-        if (tabId === 'pnl') {
-            if (modalPnlChartInst) modalPnlChartInst.resize();
-            if (modalVarietyPnlInst) modalVarietyPnlInst.resize();
-        } else if (tabId === 'risk') {
-            if (modalDdChartInst) modalDdChartInst.resize();
-        } else if (tabId === 'variety') {
-            if (modalVarietyContribInst) modalVarietyContribInst.resize();
-            if (modalSectorPieInst) modalSectorPieInst.resize();
-            if (modalHoldDistInst) modalHoldDistInst.resize();
-        }
+        // 切到任一含 ECharts 的 tab 时重新渲染（hidden init 后 0 尺寸，dispose+reinit 才能显示）
+        if (tabId === 'pnl' && typeof renderPnlAnalysis === 'function') renderPnlAnalysis();
+        else if (tabId === 'risk' && typeof renderRiskCapacity === 'function') renderRiskCapacity();
+        else if (tabId === 'variety' && typeof renderVarietyAnalysis === 'function') renderVarietyAnalysis();
     }, 100);
 }
 
