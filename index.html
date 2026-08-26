@@ -53,6 +53,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
     <script src="trade_pnl.js"></script>
     <script src="account_overview.js"></script>
     <script src="daily_pnl.js"></script>
+    <script src="variety_pnl.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -4738,36 +4739,33 @@ function renderPnlAnalysis() {
             el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">暂无官网每日盈亏数据</div>';
         }
     }
-    // 2) 品种(平仓)盈亏柱图
+    // 2) 品种盈亏柱图（官网 getFutures 直连，官方同源）
     const el2 = document.getElementById('modal-variety-pnl');
     if (el2) {
         if (modalVarietyPnlInst) { modalVarietyPnlInst.dispose(); modalVarietyPnlInst = null; }
-        const pnl = (window.TRADE_PNL && window.TRADE_PNL[String(acc.id)]) || [];
-        if (pnl.length === 0) {
-            el2.innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px;font-size:12px;">暂无品种成交流水</div>';
+        const vpnl = (window.VARIETY_PNL && window.VARIETY_PNL[String(acc.id)]) || null;
+        const vlist = (vpnl && vpnl.varieties) || [];
+        if (vlist.length === 0) {
+            el2.innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px;font-size:12px;">暂无品种盈亏数据</div>';
         } else {
-            const top = pnl.slice(0, 15);
-            const symbols = top.map(v => v.name || v.symbol);
+            const top = vlist.slice(0, 15);
+            const symbols = top.map(v => v.name);
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyPnlInst = echarts.init(el2);
             modalVarietyPnlInst.setOption({
-                title: { text: '期货品种(平仓)盈亏', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
+                title: { text: '品种盈亏（官网数据 · 元）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
                     formatter: function (params) {
-                        const p = params[0]; const v = p.value; const idx = p.dataIndex; const rec = top[idx];
+                        const p = params[0]; const v = p.value; const rec = top[p.dataIndex];
                         const sign = v >= 0 ? '+' : '';
-                        return '<b>' + (rec.name || rec.symbol) + '</b><br/>' +
-                            '总盈亏: <b style="color:' + labelColor(v) + '">' + sign + Number(v).toLocaleString() + '</b><br/>' +
-                            '做多: ' + (rec.longProfit >= 0 ? '+' : '') + Number(rec.longProfit).toLocaleString() + '<br/>' +
-                            '做空: ' + (rec.shortProfit >= 0 ? '+' : '') + Number(rec.shortProfit).toLocaleString() + '<br/>' +
-                            '平仓 ' + rec.n + ' 笔 · 胜率 ' + rec.winRate + '%';
+                        return '<b>' + rec.name + '</b><br/>总盈亏: <b style="color:' + labelColor(v) + '">' + sign + Number(v).toLocaleString() + ' 元</b>';
                     }
                 },
                 grid: { left: 70, right: 40, top: 32, bottom: 22 },
                 xAxis: { type: 'value', axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { color: '#57606a', fontSize: 10, formatter: v => (Math.abs(v) >= 10000 ? (v/10000).toFixed(0) + '万' : v) }, splitLine: { lineStyle: { color: '#eaeef2' } } },
                 yAxis: { type: 'category', data: symbols, inverse: true, axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { color: '#57606a', fontSize: 10 }, splitLine: { show: false } },
-                series: [{ name: '平仓盈亏', type: 'bar', data: profits, barMaxWidth: 14, itemStyle: { color: function (p) { return labelColor(p.value); }, borderRadius: [0, 2, 2, 0] } }]
+                series: [{ name: '品种盈亏', type: 'bar', data: profits, barMaxWidth: 14, itemStyle: { color: function (p) { return labelColor(p.value); }, borderRadius: [0, 2, 2, 0] } }]
             });
         }
     }
@@ -4782,28 +4780,26 @@ function renderVarietyAnalysis() {
     if (!acc) return;
     const aid = String(acc.id || '');
     const ov = (window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW[aid]) || null;
-    // 1) 品种贡献 Top10
+    const vpnl = (window.VARIETY_PNL && window.VARIETY_PNL[aid]) || null;
+    // 1) 品种贡献 Top10（官网 getFutures 直连）
     const el1 = document.getElementById('modal-variety-contrib');
     if (el1) {
         if (modalVarietyContribInst) { modalVarietyContribInst.dispose(); modalVarietyContribInst = null; }
-        if (!ov || !ov.symbol_pnl || ov.symbol_pnl.length === 0) {
-            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px;font-size:12px;">暂无品种成交流水</div>';
+        const vlist = (vpnl && vpnl.varieties) || [];
+        if (vlist.length === 0) {
+            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px;font-size:12px;">暂无品种盈亏数据</div>';
         } else {
-            const top = ov.symbol_pnl.slice(0, 10);
-            const symbols = top.map(v => v.name || v.symbol);
+            const top = vlist.slice(0, 10);
+            const symbols = top.map(v => v.name);
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyContribInst = echarts.init(el1);
             modalVarietyContribInst.setOption({
-                title: { text: '品种盈亏贡献 Top10', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
+                title: { text: '品种盈亏贡献 Top10（官网）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
                     formatter: function (params) {
-                        const p = params[0]; const v = p.value; const idx = p.dataIndex; const rec = top[idx];
-                        return '<b>' + (rec.name || rec.symbol) + '</b><br/>' +
-                            '盈亏: <b style="color:' + labelColor(v) + '">' + (v >= 0 ? '+' : '') + Number(v).toLocaleString() + '</b><br/>' +
-                            '做多: ' + (rec.long >= 0 ? '+' : '') + Number(rec.long).toLocaleString() + '<br/>' +
-                            '做空: ' + (rec.short >= 0 ? '+' : '') + Number(rec.short).toLocaleString() + '<br/>' +
-                            '笔数: ' + rec.n + ' · 胜率: ' + rec.win_rate + '%';
+                        const p = params[0]; const v = p.value; const rec = top[p.dataIndex];
+                        return '<b>' + rec.name + '</b><br/>盈亏: <b style="color:' + labelColor(v) + '">' + (v >= 0 ? '+' : '') + Number(v).toLocaleString() + ' 元</b>';
                     }
                 },
                 grid: { left: 70, right: 40, top: 32, bottom: 22 },
@@ -4813,14 +4809,15 @@ function renderVarietyAnalysis() {
             });
         }
     }
-    // 2) 板块分布饼图
+    // 2) 板块分布饼图（官网 getFutures 板块聚合）
     const el2 = document.getElementById('modal-sector-pie');
     if (el2) {
         if (modalSectorPieInst) { modalSectorPieInst.dispose(); modalSectorPieInst = null; }
-        if (!ov || !ov.sector_pnl || ov.sector_pnl.length === 0) {
+        const vsectors = (vpnl && vpnl.sectors) || [];
+        if (vsectors.length === 0) {
             el2.innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px;font-size:12px;">暂无板块数据</div>';
         } else {
-            const data = ov.sector_pnl.map(s => ({ name: s.sector, value: Math.abs(s.profit) }));
+            const data = vsectors.map(s => ({ name: s.sector, value: Math.abs(s.profit) }));
             modalSectorPieInst = echarts.init(el2);
             modalSectorPieInst.setOption({
                 title: { text: '板块盈亏分布', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
