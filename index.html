@@ -546,10 +546,10 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .summary-bar .meta { margin-left: auto; color: #8b949e; font-size: 11px; }
 
 /* 账户概况 3 栏（原网站风格） */
-.overview-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.overview-3col { display: grid; grid-template-columns: 1.05fr 1.05fr 0.9fr; gap: 12px; }
 .overview-3col .col { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; }
 .overview-3col .col-title { font-size: 13px; font-weight: 600; color: #1f2328; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eaeef2; }
-.overview-3col .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; gap: 12px; }
+.overview-3col .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; gap: 12px; }
 .overview-3col .row .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
 .overview-3col .row .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; white-space: nowrap; }
 .overview-3col .row .val.up { color: #cf222e; }
@@ -564,6 +564,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .overview-3col .feat-track { flex: 1; height: 6px; background: #eaeef2; border-radius: 3px; overflow: hidden; }
 .overview-3col .feat-fill { height: 100%; background: #0969da; border-radius: 3px; }
 .overview-3col .feat-pct { font-size: 11px; font-family: Consolas, monospace; color: #1f2328; min-width: 48px; text-align: right; }
+.overview-3col .feat-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eaeef2; font-size: 11px; color: #8b949e; line-height: 1.6; }
 
 /* 风控能力风险指标卡 */
 .risk-cards-grid .risk-card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; text-align: left; }
@@ -4653,11 +4654,12 @@ function renderAccountOverview() {
                 '<div class="row"><span class="label">日均操作权益</span><span class="val">' + (ov.equity_mean || 0) + ' 万</span></div>' +
                 '<div class="row"><span class="label">最大操作权益</span><span class="val">' + (ov.equity_max || 0) + ' 万</span></div>' +
                 '<div class="row"><span class="label">最新操作权益</span><span class="val">' + (ov.equity_latest || 0) + ' 万</span></div>' +
-                '<div class="row"><span class="label">存续合计</span><span class="val ' + col(ov.cum_profit) + '">' + sign(ov.cum_profit) + (ov.cum_profit || 0).toLocaleString() + '</span></div>' +
+                '<div class="row"><span class="label">存续合计</span><span class="val ' + col(ov.cum_profit) + '">' + sign(ov.cum_profit) + ((ov.cum_profit || 0) / 10000).toFixed(2) + ' 万</span></div>' +
                 '<div class="row"><span class="label">盈亏系数</span><span class="val">' + (ov.fprofit_coef || 0) + '</span></div>' +
             '</div>' +
             // 交易特征
-            '<div class="col"><div class="col-title">交易特征</div>' + featHtml + '</div>' +
+            '<div class="col"><div class="col-title">交易特征</div>' + featHtml +
+                '<div class="feat-footer">基于 ' + (ov.trade_count || 0) + ' 笔成交<br>截止 ' + (ov.last_date || '--') + '</div></div>' +
         '</div>';
 }
 
