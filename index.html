@@ -570,7 +570,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 /* 交易特征：标签 + 进度条 + 百分比 横向一行 */
 .overview-3col .feat-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
 .overview-3col .feat-row .feat-label { flex: 0 0 150px; font-size: 12px; color: #57606a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.overview-3col .feat-bar { flex: 1; display: flex; align-items: center; }
+.overview-3col .feat-bar { flex: 1; min-width: 0; }
 .overview-3col .feat-track { width: 100%; height: 8px; background: #eaeef2; border-radius: 4px; overflow: hidden; }
 .overview-3col .feat-fill { height: 100%; background: #0969da; border-radius: 4px; }
 .overview-3col .feat-pct { flex: 0 0 54px; font-size: 12px; font-family: Consolas, monospace; color: #1f2328; text-align: right; }
@@ -4619,8 +4619,8 @@ function renderAccountOverview() {
         el.innerHTML = '<div style="padding:24px;text-align:center;color:#8b949e;background:#ffffff;border:1px solid #d0d7de;border-radius:6px;font-size:12px;">该账户暂无数据（NAV/成交流水未覆盖）</div>';
         return;
     }
-    const sign = v => (v >= 0 ? '+' : '');
     const col = v => (v >= 0 ? 'up' : 'down');
+    const signNeg = v => v < 0 ? '-' : '';
     // KV 项：label | value（cls 控制颜色）
     const kv = (label, val, cls) => '<div class="kv-item"><span class="label">' + label + '</span><span class="val ' + (cls || '') + '">' + val + '</span></div>';
     const row = (...items) => '<div class="kv-row">' + items.join('') + '</div>';
@@ -4648,15 +4648,15 @@ function renderAccountOverview() {
                 '<div class="kv-rows">' +
                     row(
                         kv('综合积分', (ov.score || 0), 'score'),
-                        kv('累计净利润', sign(ov.cum_profit_wan) + (ov.cum_profit_wan || 0).toFixed(2) + ' 万', col(ov.cum_profit_wan))
+                        kv('累计净利润', (ov.cum_profit_wan || 0).toFixed(2) + ' 万', col(ov.cum_profit_wan))
                     ) +
                     row(
-                        kv('参考收益率', sign(ov.ref_return) + (ov.ref_return || 0).toFixed(2) + '%', col(ov.ref_return)),
-                        kv('年化收益率', sign(ov.annual_return) + (ov.annual_return || 0).toFixed(2) + '%', col(ov.annual_return))
+                        kv('参考收益率', (ov.ref_return || 0).toFixed(2) + '%', col(ov.ref_return)),
+                        kv('年化收益率', (ov.annual_return || 0).toFixed(2) + '%', col(ov.annual_return))
                     ) +
                     row(
                         kv('累计净值', (ov.final_nav || 0).toFixed(4)),
-                        kv('最大回撤', (ov.mdd || 0).toFixed(2) + '%', 'up')
+                        kv('最大回撤', Math.abs(ov.mdd || 0).toFixed(2) + '%', 'up')
                     ) +
                     row(
                         kv('收益回撤比', (ov.rr || 0).toFixed(4)),
@@ -4696,7 +4696,7 @@ function renderAccountOverview() {
                         kv('最新操作权益', (ov.equity_latest || 0) + ' 万')
                     ) +
                     row(
-                        kv('存续合计', sign(ov.cum_profit) + ((ov.cum_profit || 0) / 10000).toFixed(2) + ' 万', 'up'),
+                        kv('存续合计', signNeg(ov.cum_profit) + (Math.abs(ov.cum_profit || 0) / 10000).toFixed(2) + ' 万', 'up'),
                         kv('盈亏系数', (ov.fprofit_coef || 0))
                     ) +
                 '</div>' +
