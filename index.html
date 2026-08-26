@@ -4684,21 +4684,34 @@ function renderPnlAnalysis() {
             modalPnlChartInst = echarts.init(el1);
             modalPnlChartInst.setOption({
                 title: { text: '累计盈亏（元 · 真实平仓盈亏）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
+                legend: { data: ['累计净盈亏', '累计手续费'], top: 0, right: 8, textStyle: { color: '#57606a', fontSize: 11 } },
                 tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
                     formatter: function (params) {
-                        const p = params[0];
-                        const v = p.value;
-                        return p.axisValue + '<br/>累计盈亏: <b style="color:' + (v >= 0 ? '#cf222e' : '#1a7f37') + '">' + (v >= 0 ? '+' : '') + Number(v).toLocaleString() + ' 元</b>';
+                        let html = '<b>' + params[0].axisValue + '</b>';
+                        params.forEach(function (p) {
+                            const v = p.value;
+                            const sign = v >= 0 ? '+' : '';
+                            const col = p.seriesName.indexOf('手续费') >= 0 ? '#1a7f37' : (v >= 0 ? '#cf222e' : '#1a7f37');
+                            html += '<br/>' + p.marker + ' ' + p.seriesName + ': <b style="color:' + col + '">' + sign + Number(v).toLocaleString() + ' 元</b>';
+                        });
+                        return html;
                     } },
                 grid: { left: 60, right: 14, top: 32, bottom: 22 },
                 xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { show: false }, splitLine: { show: false } },
                 yAxis: { type: 'value', axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { color: '#57606a', fontSize: 10, formatter: fmtY }, splitLine: { lineStyle: { color: '#eaeef2' } } },
-                series: [{
-                    name: '累计盈亏', type: 'line', data: cum, smooth: true, symbol: 'none',
-                    lineStyle: { color: '#cf222e', width: 2 },
-                    areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(207,34,46,0.22)' }, { offset: 1, color: 'rgba(207,34,46,0.01)' }] } },
-                    itemStyle: { color: '#cf222e' }
-                }]
+                series: [
+                    {
+                        name: '累计净盈亏', type: 'line', data: cum, smooth: true, symbol: 'none',
+                        lineStyle: { color: '#cf222e', width: 2 },
+                        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(207,34,46,0.22)' }, { offset: 1, color: 'rgba(207,34,46,0.01)' }] } },
+                        itemStyle: { color: '#cf222e' }
+                    },
+                    {
+                        name: '累计手续费', type: 'line', data: (ov && ov.cum_comm_series) ? ov.cum_comm_series.map(function (p) { return p[1]; }) : [],
+                        smooth: true, symbol: 'none',
+                        lineStyle: { color: '#1a7f37', width: 1.5 }
+                    }
+                ]
             });
             setTimeout(() => { if (modalPnlChartInst) modalPnlChartInst.resize(); }, 80);
         } else {
