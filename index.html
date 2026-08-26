@@ -550,7 +550,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 .overview-3col .col-title { font-size: 13px; font-weight: 600; color: #1f2328; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eaeef2; }
 .overview-3col .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; gap: 12px; }
 .overview-3col .row .label { color: #57606a; white-space: nowrap; flex-shrink: 0; }
-.overview-3col .row .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; }
+.overview-3col .row .val { font-family: Consolas, monospace; color: #1f2328; font-weight: 500; white-space: nowrap; }
 .overview-3col .row .val.up { color: #cf222e; }
 .overview-3col .row .val.down { color: #1a7f37; }
 .overview-3col .row .val.score { color: #0969da; font-size: 14px; }
@@ -4670,35 +4670,39 @@ function renderPnlAnalysis() {
     const el1 = document.getElementById('modal-pnl-chart');
     if (el1) {
         if (modalPnlChartInst) { modalPnlChartInst.dispose(); modalPnlChartInst = null; }
-        const embeddedNav = typeof getEmbeddedAccountNav === 'function' ? getEmbeddedAccountNav() : null;
-        const navData = embeddedNav ? embeddedNav[String(acc.id)] : null;
-        if (navData) {
-            const dates = Array.isArray(navData.dates?.[0]) ? navData.dates[0] : navData.dates;
-            const nav = Array.isArray(navData.nav?.[0]) ? navData.nav[0] : navData.nav;
-            if (dates && nav && dates.length >= 2) {
-                const base = nav[0];
-                const cumRet = nav.map(v => +(((v/base)-1)*100).toFixed(2));
-                modalPnlChartInst = echarts.init(el1);
-                setTimeout(() => { modalPnlChartInst.resize(); }, 50);
-                setTimeout(() => { modalPnlChartInst.resize(); }, 50);
-                modalPnlChartInst.setOption({
-                    title: { text: '累计盈亏 (%)', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
-                    tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 } },
-                    grid: { left: 50, right: 14, top: 32, bottom: 22 },
-                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { show: false }, splitLine: { show: false } },
-                    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { color: '#57606a', fontSize: 10, formatter: v => v.toFixed(0)+'%' }, splitLine: { lineStyle: { color: '#eaeef2' } } },
-                    series: [{
-                        name: '累计盈亏', type: 'line', data: cumRet, smooth: true, symbol: 'none',
-                        lineStyle: { color: '#cf222e', width: 2 },
-                        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(207,34,46,0.22)' }, { offset: 1, color: 'rgba(207,34,46,0.01)' }] } },
-                        itemStyle: { color: '#cf222e' }
-                    }]
-                });
-            } else {
-                el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">净值数据不足</div>';
-            }
+        const ov = (window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW[String(acc.id)]) || null;
+        const cumSeries = (ov && ov.cum_pnl_series) || [];
+        if (cumSeries.length >= 2) {
+            const dates = cumSeries.map(p => p[0]);
+            const cum = cumSeries.map(p => p[1]);
+            const fmtY = v => {
+                const a = Math.abs(v);
+                if (a >= 100000000) return (v/100000000).toFixed(1) + '亿';
+                if (a >= 10000) return (v/10000).toFixed(0) + '万';
+                return Math.round(v) + '';
+            };
+            modalPnlChartInst = echarts.init(el1);
+            modalPnlChartInst.setOption({
+                title: { text: '累计盈亏（元 · 真实平仓盈亏）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
+                tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
+                    formatter: function (params) {
+                        const p = params[0];
+                        const v = p.value;
+                        return p.axisValue + '<br/>累计盈亏: <b style="color:' + (v >= 0 ? '#cf222e' : '#1a7f37') + '">' + (v >= 0 ? '+' : '') + Number(v).toLocaleString() + ' 元</b>';
+                    } },
+                grid: { left: 60, right: 14, top: 32, bottom: 22 },
+                xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { show: false }, splitLine: { show: false } },
+                yAxis: { type: 'value', axisLine: { lineStyle: { color: '#d0d7de' } }, axisLabel: { color: '#57606a', fontSize: 10, formatter: fmtY }, splitLine: { lineStyle: { color: '#eaeef2' } } },
+                series: [{
+                    name: '累计盈亏', type: 'line', data: cum, smooth: true, symbol: 'none',
+                    lineStyle: { color: '#cf222e', width: 2 },
+                    areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(207,34,46,0.22)' }, { offset: 1, color: 'rgba(207,34,46,0.01)' }] } },
+                    itemStyle: { color: '#cf222e' }
+                }]
+            });
+            setTimeout(() => { if (modalPnlChartInst) modalPnlChartInst.resize(); }, 80);
         } else {
-            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">暂无净值数据</div>';
+            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">暂无成交流水</div>';
         }
     }
     // 2) 品种(平仓)盈亏柱图
@@ -4714,8 +4718,6 @@ function renderPnlAnalysis() {
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyPnlInst = echarts.init(el2);
-            setTimeout(() => { modalVarietyPnlInst.resize(); }, 50);
-            setTimeout(() => { modalVarietyPnlInst.resize(); }, 50);
             modalVarietyPnlInst.setOption({
                 title: { text: '期货品种(平仓)盈亏', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4759,8 +4761,6 @@ function renderVarietyAnalysis() {
             const profits = top.map(v => v.profit);
             const labelColor = v => (v >= 0 ? '#cf222e' : '#1a7f37');
             modalVarietyContribInst = echarts.init(el1);
-            setTimeout(() => { modalVarietyContribInst.resize(); }, 50);
-            setTimeout(() => { modalVarietyContribInst.resize(); }, 50);
             modalVarietyContribInst.setOption({
                 title: { text: '品种盈亏贡献 Top10', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4789,8 +4789,6 @@ function renderVarietyAnalysis() {
         } else {
             const data = ov.sector_pnl.map(s => ({ name: s.sector, value: Math.abs(s.profit) }));
             modalSectorPieInst = echarts.init(el2);
-            setTimeout(() => { modalSectorPieInst.resize(); }, 50);
-            setTimeout(() => { modalSectorPieInst.resize(); }, 50);
             modalSectorPieInst.setOption({
                 title: { text: '板块盈亏分布', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'item', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4818,8 +4816,6 @@ function renderVarietyAnalysis() {
                 { name: '趋势(≥3天)', v: ov.trend_ratio },
             ].filter(d => d.v > 0);
             modalHoldDistInst = echarts.init(el3);
-            setTimeout(() => { modalHoldDistInst.resize(); }, 50);
-            setTimeout(() => { modalHoldDistInst.resize(); }, 50);
             modalHoldDistInst.setOption({
                 title: { text: '持仓周期分布', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
@@ -4854,8 +4850,6 @@ function renderRiskCapacity() {
                 const ddSeries = nav.map(v => { if (v > peak) peak = v; return +(((v/peak)-1)*100).toFixed(2); });
                 const maxDd = Math.min(...ddSeries);
                 modalDdChartInst = echarts.init(el1);
-                setTimeout(() => { modalDdChartInst.resize(); }, 50);
-                setTimeout(() => { modalDdChartInst.resize(); }, 50);
                 modalDdChartInst.setOption({
                     title: { text: '连续回撤 (%) · 历史最大 ' + maxDd.toFixed(2) + '%', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                     tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 }, valueFormatter: v => v.toFixed(2)+'%' },
