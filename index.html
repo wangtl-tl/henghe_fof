@@ -52,6 +52,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 </script>
     <script src="trade_pnl.js"></script>
     <script src="account_overview.js"></script>
+    <script src="daily_pnl.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -4670,11 +4671,18 @@ function renderPnlAnalysis() {
     const el1 = document.getElementById('modal-pnl-chart');
     if (el1) {
         if (modalPnlChartInst) { modalPnlChartInst.dispose(); modalPnlChartInst = null; }
-        const ov = (window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW[String(acc.id)]) || null;
-        const cumSeries = (ov && ov.cum_pnl_series) || [];
-        if (cumSeries.length >= 2) {
-            const dates = cumSeries.map(p => p[0]);
-            const cum = cumSeries.map(p => p[1]);
+        const dp = (window.DAILY_PNL && window.DAILY_PNL[String(acc.id)]) || null;
+        if (dp && dp.dates && dp.dates.length >= 2 && dp.profit && dp.profit.length) {
+            const dates = dp.dates;
+            // 官网每日 profit/fee 累加 → 累计净盈亏 + 累计手续费
+            let cumProfit = 0, cumFee = 0;
+            const cum = [], cumComm = [];
+            for (let i = 0; i < dp.profit.length; i++) {
+                cumProfit += dp.profit[i];
+                cumFee += dp.fee[i];
+                cum.push(Math.round(cumProfit * 100) / 100);
+                cumComm.push(Math.round(cumFee * 100) / 100);
+            }
             const fmtY = v => {
                 const a = Math.abs(v);
                 if (a >= 100000000) return (v/100000000).toFixed(1) + '亿';
@@ -4683,7 +4691,7 @@ function renderPnlAnalysis() {
             };
             modalPnlChartInst = echarts.init(el1);
             modalPnlChartInst.setOption({
-                title: { text: '累计盈亏（元 · 真实平仓盈亏）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
+                title: { text: '累计盈亏（官网数据 · 元）', left: 0, top: 0, textStyle: { color: '#1f2328', fontSize: 12, fontWeight: 500 } },
                 legend: { data: ['累计净盈亏', '累计手续费'], top: 0, right: 8, textStyle: { color: '#57606a', fontSize: 11 } },
                 tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d0d7de', textStyle: { color: '#1f2328', fontSize: 11 },
                     formatter: function (params) {
@@ -4707,7 +4715,7 @@ function renderPnlAnalysis() {
                         itemStyle: { color: '#cf222e' }
                     },
                     {
-                        name: '累计手续费', type: 'line', data: (ov && ov.cum_comm_series) ? ov.cum_comm_series.map(function (p) { return p[1]; }) : [],
+                        name: '累计手续费', type: 'line', data: cumComm,
                         smooth: true, symbol: 'none',
                         lineStyle: { color: '#1a7f37', width: 1.5 }
                     }
@@ -4715,7 +4723,7 @@ function renderPnlAnalysis() {
             });
             setTimeout(() => { if (modalPnlChartInst) modalPnlChartInst.resize(); }, 80);
         } else {
-            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">暂无成交流水</div>';
+            el1.innerHTML = '<div style="color:#8b949e;text-align:center;padding:60px;font-size:12px;">暂无官网每日盈亏数据</div>';
         }
     }
     // 2) 品种(平仓)盈亏柱图
