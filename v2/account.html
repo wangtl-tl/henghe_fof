@@ -73,6 +73,21 @@ tr:hover td{background:#fafbfc}
 .feature-row .fv{width:52px;text-align:right;font-weight:600;flex-shrink:0}
 .footer{text-align:center;color:var(--weak);font-size:12px;padding:20px 0}
 svg{display:block;width:100%;height:auto}
+/* 跟投监控整合（2026-08-27） */
+.ready-bar{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ready-bar .ok{color:var(--down);font-weight:600}
+.ready-bar .bad{color:var(--up);font-weight:600}
+.ready-bar .muted-note{color:var(--weak);font-size:12px}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.ov-cell{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer}
+.ov-cell:hover{border-color:var(--blue)}
+.ov-cell.on{border-color:var(--blue);background:#f0f7ff}
+.ov-cell .nm{font-size:13px;font-weight:600;margin-bottom:6px}
+.ov-cell .row{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin:3px 0}
+.seg-light{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.log-box{background:#1f2a44;color:#c9d4e8;border-radius:10px;padding:10px 12px;font-size:11px;font-family:Consolas,monospace;height:160px;overflow-y:auto;line-height:1.7;margin-top:10px}
+.live-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.live-status{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -200,18 +215,72 @@ function svgHBar(items, w=700, h){
   return `<svg viewBox="0 0 ${w} ${h}"><line x1="${w/2}" x2="${w/2}" y1="6" y2="${h-8}" stroke="#d0d7de"/>${out}</svg>`;
 }
 
+// ---------- 实时数据（本地访问自动拉 18081，线上回退快照） ----------
+let LIVE = null;    // {combo: state}
+let READY = null;   // 数据就绪
+let LIVE_NAV = {};  // {combo: nav曲线}
+async function tryLive(){
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/state?_='+Date.now(), {cache:'no-store'});
+    if(r.ok) LIVE = await r.json();
+  }catch(e){ LIVE = null; }
+  try{
+    const r2 = await fetch('http://127.0.0.1:18081/api/readiness?_='+Date.now(), {cache:'no-store'});
+    if(r2.ok) READY = await r2.json();
+  }catch(e){}
+  try{
+    const r3 = await fetch('http://127.0.0.1:18081/api/nav?combo='+combo, {cache:'no-store'});
+    if(r3.ok){ const nd = await r3.json(); if(nd && nd.t) LIVE_NAV[combo] = nd; }
+  }catch(e){}
+  render();
+}
+function liveSim(D){
+  const st = LIVE && LIVE[combo];
+  if(!st) return D.sim;
+  return {
+    account: st.account || D.sim.account,
+    positions: st.positions || D.sim.positions,
+    trades: st.trades || D.sim.trades,
+    close_trades: D.sim.close_trades,
+    nav: D.sim.nav,
+    settle: D.sim.settle,
+    logs: st.logs || [],
+    meta: st.meta || {},
+    tq_user: st.tq_user,
+    name: st.name,
+  };
+}
+function segLabel(){
+  const hm = new Date().getHours()*60 + new Date().getMinutes();
+  if(hm>=21*60 || hm<9*60) return {t:'夜盘/休市', c:'#185fa5'};
+  if(hm>=15*60 && hm<21*60) return {t:'日盘已收盘', c:'#ba7517'};
+  return {t:'日盘交易中', c:'#1a7f37'};
+}
+function readinessHtml(){
+  if(!READY) return '<span class="muted-note">数据就绪：今日尚未运行检查（每日 19:30 首查 / 20:15 终查）</span>';
+  if(READY.ready===true || READY.missing_count===0)
+    return '<span class="ok">✅ 数据全部就绪</span><span class="muted-note">'+esc(READY.total_traders||'')+' 位成员数据已获取 · 20:30 全量核准</span>';
+  const names = (READY.missing||[]).slice(0,6).map(x=>esc(x.name||x.aid)).join('、');
+  return '<span class="bad">⚠️ '+esc(READY.missing_count)+' 位成员未就绪</span><span class="muted-note">'+(names?names+' · ':'')+'20:30 核准将跳过/沿用旧目标</span>';
+}
+function switchCombo(c){
+  combo = c; page = 1;
+  history.replaceState(null,'','?combo='+c);
+  render();
+}
 // ---------- 各 Tab 渲染 ----------
 function render(){
   const D = AA[combo]; if(!D){ return; }
-  renderInfoBar(D);
+  const S = Object.assign({}, D, {sim: liveSim(D)});
+  renderInfoBar(S);
   document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===mainTab));
   const el = document.getElementById('mainContent');
-  if(mainTab==='overview') el.innerHTML = rOverview(D);
-  else if(mainTab==='profile') el.innerHTML = rProfile(D);
-  else if(mainTab==='profit') el.innerHTML = rProfit(D);
-  else if(mainTab==='variety') el.innerHTML = rVariety(D);
-  else if(mainTab==='risk') el.innerHTML = rRisk(D);
-  else el.innerHTML = rPositions(D);
+  if(mainTab==='overview') el.innerHTML = rOverview(S);
+  else if(mainTab==='profile') el.innerHTML = rProfile(S);
+  else if(mainTab==='profit') el.innerHTML = rProfit(S);
+  else if(mainTab==='variety') el.innerHTML = rVariety(S);
+  else if(mainTab==='risk') el.innerHTML = rRisk(S);
+  else el.innerHTML = rPositions(S);
 }
 function renderInfoBar(D){
   const acct = D.sim.account||{};
@@ -258,7 +327,36 @@ function rOverview(D){
       <div class="kv2"><span>权重 ${fmt(m.weight,1)}%</span><span>收益 ${fmt(m.yield,1)}%</span></div>
       <div class="kv2"><span>回撤 ${fmt(m.drawdown,1)}%</span><span>胜率 ${fmt(m.win_rate,1)}%</span></div>
     </div>`).join('');
+  // 10 组合切换卡（跟投监控总览网格）
+  const ovCells = COMBOS.map(c=>{
+    const d = AA[c]||{};
+    const st = (LIVE && LIVE[c]) || null;
+    const a = (st && st.account) || (d.sim && d.sim.account) || {};
+    const b=a.balance||0, m=a.margin||0, p=a.position_profit||0;
+    const r = b?(m/b*100):0;
+    return `<div class="ov-cell ${c===combo?'on':''}" onclick="switchCombo('${c}')">
+      <div class="nm">${esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''))}</div>
+      <div class="row"><span>权益</span><span>${wan(b)}万</span></div>
+      <div class="row"><span>保证金</span><span>${wan(m)}万</span></div>
+      <div class="row"><span>盈亏</span><span class="${pnlCls(p)}">${pnlTxt(p)}</span></div>
+      <div class="row"><span>风险度</span><span>${r.toFixed(1)}%</span></div>
+    </div>`;
+  }).join('');
+  // 每日持仓对齐面板（10 组合 实际/目标 + 最近核准）
+  const alignRows = COMBOS.map(c=>{
+    const st = (LIVE && LIVE[c]) || null;
+    const tgt = (st && st.meta && st.meta.target_count) || 0;
+    const act = (st && st.positions) ? st.positions.length : ((AA[c]&&AA[c].sim&&AA[c].sim.positions)||[]).length;
+    const logs = (st && st.logs) || [];
+    const rebs = logs.filter(l=>String(l).indexOf('核准')>=0||String(l).indexOf('调仓')>=0);
+    const last = rebs.length ? String(rebs[rebs.length-1]).slice(0,42) : '';
+    return `<tr><td>${esc((AA[c]||{}).name||c)}</td><td>${act} / ${tgt||'—'}</td><td class="muted">${esc(last)||'今日尚未核准'}</td></tr>`;
+  }).join('');
   return `
+  <div class="ready-bar">📡 ${readinessHtml()}</div>
+  <div class="panel" style="padding:12px 16px"><h3>10 组合快速切换 <span class="hint">点击卡片切换分析对象</span></h3>
+    <div class="ov-grid">${ovCells}</div>
+  </div>
   <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value ${c[1].startsWith('+')||c[1].startsWith('-')?'':''}">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
   <div class="cols">
     <div class="panel"><h3>组合净值曲线 <span class="hint">${nd[0]||''} ~ ${nd[nd.length-1]||''}</span></h3>${svgLine(nd, nv)}</div>
@@ -273,6 +371,10 @@ function rOverview(D){
         <span>最大日亏 <b class="down">${pct(st.max_daily_loss)}</b></span>
       </div>
     </div>
+  </div>
+  <div class="panel"><h3>📋 每日持仓对齐 <span class="hint">实际持仓 / 目标 · 最近核准</span></h3>
+    <table><tr><th>组合</th><th>持仓/目标</th><th>最近核准</th></tr>${alignRows}</table>
+    <div class="mini-legend"><span>每日 20:15 抓取当日结算 → 20:30 全量核准一次；无夜盘品种次日 09:00 自动撮合</span></div>
   </div>
   <div class="panel"><h3>组合成员（${D.members.length} 人）</h3>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${memberHtml}</div>
@@ -393,11 +495,12 @@ function rRisk(D){
 function rPositions(D){
   const sim = D.sim||{};
   const subtabs = [
-    ['trades','成交明细'],['pos','持仓汇总'],['posdetail','持仓明细'],
+    ['live','实时监控'],['trades','成交明细'],['pos','持仓汇总'],['posdetail','持仓明细'],
     ['close','平仓明细'],['deposit','出入金明细'],['opt','期权成交'],['optpos','期权持仓'],
   ];
   let body = '';
-  if(subTab==='trades') body = rSubTrades(sim);
+  if(subTab==='live') body = rSubLive(sim);
+  else if(subTab==='trades') body = rSubTrades(sim);
   else if(subTab==='pos') body = rSubPos(sim, true);
   else if(subTab==='posdetail') body = rSubPos(sim, false);
   else if(subTab==='close') body = rSubClose(sim);
@@ -405,6 +508,63 @@ function rPositions(D){
   return `
   <div class="subtabs">${subtabs.map(s=>`<button class="subtab ${s[0]===subTab?'active':''}" data-sub="${s[0]}">${s[1]}</button>`).join('')}</div>
   ${body}`;
+}
+// 实时监控（跟投监控整合·首屏）
+function rSubLive(sim){
+  const a = sim.account||{};
+  const b=a.balance||0, avail=a.available||0, m=a.margin||0, fp=a.float_profit||0;
+  const risk = b?(m/b*100):0;
+  const seg = segLabel();
+  const cards = [
+    ['动态权益', wan(b)+' 万', ''],
+    ['可用资金', wan(avail)+' 万', ''],
+    ['占用保证金', wan(m)+' 万', ''],
+    ['持仓盈亏', pnlTxt(fp), ''],
+    ['风险度', risk.toFixed(1)+'%', risk>75?'⚠️ 偏高':'正常'],
+  ];
+  // 模拟账户净值曲线（在线用 /api/nav，快照用 sim.nav）
+  let line = '';
+  const ln = LIVE_NAV[combo] || sim.nav || [];
+  if(ln && ln.t) line = svgSimLine(ln.t.map(t=>t*1000), ln.balance);
+  else if(ln.length>1) line = svgSimLine(ln.map(p=>p.t*1000), ln.map(p=>p.balance));
+  else line = '<div class="empty">暂无净值曲线（快照生成后更新）</div>';
+  const logs = (sim.logs||[]).slice(-40).map(l=>'<div>'+esc(l)+'</div>').join('');
+  const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
+  return `
+  <div class="ready-bar">📡 ${readinessHtml()} ${liveTag}</div>
+  <div class="live-cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
+  <div class="panel"><h3>模拟账户净值曲线 <span class="hint">账户权益时序</span></h3>${line}</div>
+  <div class="live-status">
+    <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
+    <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
+    <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
+    <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
+    <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
+  </div>
+  <div class="panel" style="margin-top:12px"><h3>系统日志 <span class="hint">核准/调仓/成交</span></h3>
+    <div class="log-box">${logs||'<div>暂无日志</div>'}</div>
+  </div>`;
+}
+function svgSimLine(ts, vals){
+  if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
+  const w=720,h=200,pad=30,n=vals.length;
+  let min=Math.min(...vals),max=Math.max(...vals);
+  if(max-min<1e-9){max+=1;min-=1;}
+  const X=i=>pad+i*(w-2*pad)/(n-1);
+  const Y=v=>h-pad-(v-min)*(h-2*pad)/(max-min);
+  let path='';
+  vals.forEach((v,i)=>{path+=(i?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1);});
+  const lastV=vals[n-1], lastT=ts[n-1];
+  let tLabel='';
+  try{ tLabel = new Date(lastT).toLocaleDateString('zh-CN')+' '+new Date(lastT).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}); }catch(e){}
+  return `<svg viewBox="0 0 ${w} ${h}">
+    <line x1="${pad}" x2="${w-pad}" y1="${h-pad}" y2="${h-pad}" stroke="#d0d7de"/>
+    ${[0.25,0.5,0.75].map(f=>`<line x1="${pad}" x2="${w-pad}" y1="${(h-2*pad)*f+pad}" y2="${(h-2*pad)*f+pad}" stroke="#eef1f5"/>`).join('')}
+    <path d="${path}" fill="none" stroke="#0969da" stroke-width="1.8"/>
+    <circle cx="${X(n-1).toFixed(1)}" cy="${Y(lastV).toFixed(1)}" r="3.5" fill="#0969da"/>
+    <text x="${w-pad}" y="${Y(lastV)-8}" text-anchor="end" font-size="11" fill="#0969da" font-weight="600">${fmt(lastV,0)}</text>
+    <text x="${pad}" y="${h-4}" font-size="10" fill="#8b949e">${tLabel}</text>
+  </svg>`;
 }
 function rSubTrades(sim){
   const trades = sim.trades||[];
@@ -514,6 +674,7 @@ document.getElementById('mainContent').addEventListener('click', e=>{
 
 initComboSel();
 render();
+tryLive();  // 尝试拉取 18081 实时数据（失败自动回退快照）
 </script>
 </body>
 </html>
