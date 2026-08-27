@@ -113,6 +113,18 @@ svg{display:block;width:100%;height:auto}
 .log-box{background:#1f2a44;color:#c9d4e8;border-radius:10px;padding:10px 12px;font-size:11px;font-family:Consolas,monospace;height:160px;overflow-y:auto;line-height:1.7;margin-top:10px}
 .live-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
 .live-status{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 原组合↔跟投账户 对比卡（2026-08-27） */
+.align-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:900px){.align-cards{grid-template-columns:1fr}}
+.align-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .15s}
+.align-card:hover{border-color:var(--blue);box-shadow:0 2px 8px rgba(9,105,218,0.08)}
+.align-card .ac-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.align-card .ac-row{display:flex;justify-content:space-between;font-size:12px;line-height:2;border-bottom:1px dashed #eef1f5}
+.align-card .ac-row:last-of-type{border-bottom:none}
+.ac-arrow{color:var(--weak);margin:0 2px}
+.ac-diff{font-size:11px;margin-left:6px}
+.ac-prog{display:flex;align-items:center;gap:8px;margin-top:8px}
+.ac-prog .lbl{font-size:11px;color:var(--sub);width:56px;flex-shrink:0}
 /* 数据日高亮卡 + 就绪详情（2026-08-27） */
 .data-day-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
 .dd-item{display:flex;flex-direction:column;gap:2px}
@@ -808,6 +820,81 @@ function alignStatus(st, logs){
   if(last.indexOf('核准完成')>=0 || last.indexOf('完成')>=0) return {text:'已对齐', cls:'green', bg:'#e6f4ea;color:#1a7f37'};
   return {text:'待核准', cls:'amber', bg:'#faebcc;color:#a06000'};
 }
+// 原组合 ↔ 跟投账户 对比数据（真实计算）
+function comboAlign(c){
+  const d = AA[c]||{};
+  const st = (LIVE && LIVE[c]) || null;
+  // 跟投端（模拟账户实际持仓）
+  const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
+  const fSet = new Set(); let fLots=0, fMargin=0;
+  positions.forEach(p=>{
+    const s=(p.symbol||'').split('.').pop()||''; const m=s.match(/^[A-Za-z]+/);
+    if(m) fSet.add(m[0].toUpperCase());
+    fLots += Math.abs(p.long||0)+Math.abs(p.short||0);
+    fMargin += p.margin||0;
+  });
+  const fBal = (st&&st.account&&st.account.balance)||(d.sim&&d.sim.account&&d.sim.account.balance)||0;
+  // 原组合端（盘手汇总持仓 + 盘手权益）
+  const cp = (window.EMBEDDED_COMBO_POSITIONS||{})[c]||[];
+  const oSet = new Set(); let oLots=0, oMargin=0;
+  cp.forEach(r=>{ if(r.variety) oSet.add(String(r.variety).toUpperCase()); oLots += Math.abs(r.net||0); oMargin += r.margin||0; });
+  const oEquity = (d.members||[]).reduce((s,m)=>s+(m.equity_wan||0),0)*1e4;
+  // 跟投比例 scale = 3000万 / 原资金（无资金兜底按保证金）
+  let scale = 0;
+  if(oEquity>0) scale = 30000000/oEquity;
+  else if(oMargin>0) scale = 30000000/oMargin;
+  // 理论跟投手数/保证金 = 原值×scale；对齐度 = 实际/理论
+  const tLots = Math.round(oLots*scale), tMargin = oMargin*scale;
+  const alignPct = tLots>0 ? fLots/tLots*100 : (tMargin>0?fMargin/tMargin*100:0);
+  return {oVar:oSet.size, fVar:fSet.size, oLots, fLots, tLots, oMargin, fMargin, tMargin, oEquity, fBal, scale, alignPct};
+}
+function rAlignCards(){
+  const cards = COMBOS.map(c=>{
+    const d = AA[c]||{};
+    const st = (LIVE && LIVE[c]) || null;
+    const logs = (st && st.logs) || [];
+    const st2 = alignStatus(st, logs);
+    if(alignFilter!=='all' && st2.text!==alignFilter) return '';
+    const a = comboAlign(c);
+    const nm = esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''));
+    // 品种覆盖
+    const varOk = a.fVar >= a.oVar;
+    const varDiff = a.fVar - a.oVar;
+    // 手数对齐（实际 vs 理论）
+    const lotDiff = a.fLots - a.tLots;
+    const lotOk = Math.abs(lotDiff) <= Math.max(2, Math.round(a.tLots*0.01));
+    // 对齐度
+    const ap = Math.min(100, Math.max(0, a.alignPct));
+    const apCls = ap>=99.9 ? '#1a7f37' : (ap>=90 ? '#ba7517' : '#cf222e');
+    const fmtWan = v=> '¥'+(v/1e4).toFixed(0)+'万';
+    const fmtYi = v=> '¥'+(v/1e8).toFixed(2)+'亿';
+    const fmtAmt = v=> v>=1e8 ? fmtYi(v) : fmtWan(v);
+    return `<div class="align-card ${alignSel===c?'align-sel':''}" onclick="setAlignSel('${c}')">
+      <div class="ac-head">
+        <span style="font-weight:500;font-size:14px">${nm}</span>
+        <span class="legend-chip" style="background:${st2.bg}">${st2.text}</span>
+        <span style="flex:1"></span>
+        <span style="font-size:11px;color:var(--sub)">跟投 ${(a.scale*100).toFixed(2)}%</span>
+      </div>
+      <div class="ac-row"><span style="color:var(--sub)">品种</span>
+        <span>原 <b>${fmt(a.oVar)}</b><span class="ac-arrow">↔</span><b style="color:${varOk?'var(--down)':'var(--up)'}">跟 ${fmt(a.fVar)}</b>
+        ${varOk?'<span class="ac-diff" style="color:var(--down)">✓ 全覆盖</span>':'<span class="ac-diff" style="color:var(--up)">缺 '+Math.abs(varDiff)+'</span>'}</span></div>
+      <div class="ac-row"><span style="color:var(--sub)">手数</span>
+        <span>原 <b>${fmt(a.oLots)}</b><span class="ac-arrow">↔</span><b style="color:${lotOk?'var(--down)':'#ba7517'}">跟 ${fmt(a.fLots)}</b>
+        <span class="ac-diff" style="color:var(--sub)">理论 ${fmt(a.tLots)}</span>
+        ${lotOk?'<span class="ac-diff" style="color:var(--down)">✓</span>':'<span class="ac-diff" style="color:#ba7517">差 '+(lotDiff>0?'+':'')+fmt(lotDiff)+'</span>'}</span></div>
+      <div class="ac-row"><span style="color:var(--sub)">资金</span>
+        <span>原 <b>${fmtAmt(a.oMargin)}</b><span class="ac-arrow">↔</span><b style="color:var(--blue)">跟 ${fmtWan(a.fMargin)}</b>
+        <span class="ac-diff" style="color:var(--sub)">权益 ${fmtWan(a.fBal)}</span></span></div>
+      <div class="ac-prog">
+        <span class="lbl">对齐度</span>
+        <div style="flex:1;background:#eef1f5;border-radius:4px;height:8px;overflow:hidden"><div style="width:${ap}%;height:100%;background:${apCls}"></div></div>
+        <span style="font-size:11px;font-weight:500;color:${apCls}">${ap.toFixed(2)}%</span>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+  return `<div class="align-cards">${cards||'<div class="empty" style="grid-column:1/-1">暂无匹配组合</div>'}</div>`;
+}
 function rAlign(){
   // 逐组合数据
   let sumTgt=0, sumAct=0, sumDiff=0, alignedCnt=0, hasLiveTgt=false;
@@ -857,16 +944,13 @@ function rAlign(){
     <span style="font-size:12px;color:var(--sub)">自动刷新 60s</span>
     <span class="toggle ${alignAuto?'on':''}" onclick="setAlignAuto()"></span>
   </div>
-  <div class="panel" style="padding:10px 12px">
-    <table><tr><th>组合</th><th style="text-align:right">目标</th><th style="text-align:right">持仓</th><th style="text-align:right">差异</th><th style="text-align:center">状态</th><th>最近核准</th><th style="text-align:right">操作</th></tr>
-      ${rows||'<tr><td colspan="7" class="empty">暂无匹配组合</td></tr>'}</table>
-    <div class="mini-legend" style="margin-top:8px">
-      <span><span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">已对齐</span> 差异=0</span>
-      <span><span class="legend-chip" style="background:#faebcc;color:#a06000">待核准</span> 持仓已恢复</span>
-      <span><span class="legend-chip" style="background:#fde8e8;color:#cf222e">挂单中/异常</span> 差异≠0</span>
-      <span style="flex:1"></span><span class="muted">差异 = 持仓 − 目标（红=缺仓，黄=超仓）</span>
-    </div>
+  <div class="mini-legend" style="margin-bottom:8px">
+    <span><span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">已对齐</span> 对齐度≈100%</span>
+    <span><span class="legend-chip" style="background:#faebcc;color:#a06000">待核准</span> 有差异待补单</span>
+    <span><span class="legend-chip" style="background:#fde8e8;color:#cf222e">挂单中/异常</span> 远月未成交</span>
+    <span style="flex:1"></span><span class="muted">跟投比例 = 3000万 ÷ 原盘手资金（各组合不同）· 手数按比例缩放</span>
   </div>
+  ${rAlignCards()}
   <div class="panel" style="margin-top:12px">${detailHtml}</div>
   <div class="panel" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub);flex-wrap:wrap">
     <span style="background:#f6f8fa;border:0.5px solid var(--line);border-radius:10px;padding:3px 10px">19:30 数据首查</span><span style="color:var(--weak)">→</span>
@@ -879,25 +963,31 @@ function rAlign(){
 function rAlignDetail(c){
   const d = AA[c]||{};
   const st = (LIVE && LIVE[c]) || null;
-  const tgt = (st && st.meta && st.meta.target_count !== undefined) ? st.meta.target_count : null;
   const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
   const logs = (st && st.logs) || [];
+  const a = comboAlign(c);
   const varieties = [...new Set(positions.map(p=>{ const s=(p.symbol||'').split('.').pop()||''; const m=s.match(/^[A-Za-z]+/); return m?m[0].toUpperCase():s; }))];
-  const diff = tgt!==null ? positions.length - tgt : null;
   const logRows = logs.slice(-8).map(l=>'<div>'+esc(String(l).slice(0,90))+'</div>').join('');
-  const diffBg = diff===0 ? '#e6f4ea' : (diff===null ? '#f6f8fa' : (diff>0?'#fff8e6':'#fde8e8'));
-  const diffClr = diff===0 ? '#1a7f37' : (diff===null ? '#57606a' : (diff>0?'#a06000':'#cf222e'));
+  const fmtWan = v=> '¥'+(v/1e4).toFixed(0)+'万';
+  const fmtAmt = v=> v>=1e8 ? '¥'+(v/1e8).toFixed(2)+'亿' : fmtWan(v);
   return `<h3 style="font-size:14px;margin-bottom:8px">${esc(d.name||c)} · 对齐详情</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
     <div>
-      <div style="color:var(--sub);margin-bottom:4px">当前持仓品种（${varieties.length}）</div>
-      <div style="background:#fff;border:0.5px solid var(--line);border-radius:8px;padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:var(--sub);line-height:1.8">${esc(varieties.join('  '))||'<span class="muted">无持仓</span>'}</div>
+      <div style="color:var(--sub);margin-bottom:4px">原组合 vs 跟投账户（按 ${(a.scale*100).toFixed(2)}% 缩放）</div>
+      <table style="width:100%;font-size:12px">
+        <tr><th style="text-align:left">维度</th><th style="text-align:right">原组合</th><th style="text-align:right">跟投账户</th><th style="text-align:right">理论跟投</th></tr>
+        <tr><td>品种</td><td style="text-align:right">${fmt(a.oVar)}</td><td style="text-align:right">${fmt(a.fVar)}</td><td style="text-align:right">${fmt(a.oVar)}</td></tr>
+        <tr><td>手数</td><td style="text-align:right">${fmt(a.oLots)}</td><td style="text-align:right">${fmt(a.fLots)}</td><td style="text-align:right">${fmt(a.tLots)}</td></tr>
+        <tr><td>保证金</td><td style="text-align:right">${fmtAmt(a.oMargin)}</td><td style="text-align:right">${fmtWan(a.fMargin)}</td><td style="text-align:right">${fmtAmt(a.tMargin)}</td></tr>
+        <tr><td>权益</td><td style="text-align:right">${fmtAmt(a.oEquity)}</td><td style="text-align:right">${fmtWan(a.fBal)}</td><td style="text-align:right">—</td></tr>
+      </table>
+      <div style="margin-top:8px;background:${a.alignPct>=99.9?'#e6f4ea':(a.alignPct>=90?'#fff8e6':'#fde8e8')};color:${a.alignPct>=99.9?'#1a7f37':(a.alignPct>=90?'#a06000':'#cf222e')};border-radius:8px;padding:8px">
+        对齐度 ${Math.min(100,Math.max(0,a.alignPct)).toFixed(2)}% ${a.alignPct>=99.9?'· 持仓与目标完全一致':(a.alignPct>=90?'· 存在少量差异待核准':'· 差异较大，等待核准/撮合')}
+      </div>
     </div>
     <div>
-      <div style="color:var(--sub);margin-bottom:4px">目标差异</div>
-      <div style="background:${diffBg};color:${diffClr};border-radius:8px;padding:8px;font-size:12px">
-        ${diff===null?'目标数据缺失（快照模式）':(diff===0?'无差异，持仓与目标完全一致':'目标 '+fmt(tgt)+' 品种 · 当前 '+fmt(positions.length)+' 品种 · 差异 '+(diff>0?'+':'')+fmt(diff))}
-      </div>
+      <div style="color:var(--sub);margin-bottom:4px">跟投账户持仓品种（${varieties.length}）</div>
+      <div style="background:#fff;border:0.5px solid var(--line);border-radius:8px;padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:var(--sub);line-height:1.8">${esc(varieties.join('  '))||'<span class="muted">无持仓</span>'}</div>
       <div style="margin-top:8px;color:var(--sub)">核准日志（最近 8 条）</div>
       <div class="log-box" style="margin-top:4px;height:auto;max-height:170px">${logRows||'<div>暂无日志</div>'}</div>
     </div>
