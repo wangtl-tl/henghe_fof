@@ -633,6 +633,18 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
 /* 可点击的账户名 */
 .clickable-account { cursor: pointer; transition: color 0.2s; }
 .clickable-account:hover { color: #0969da; text-decoration: underline; }
+/* ===== 全站导航 + 首页 KPI 带（2026-08-27 改版） ===== */
+.site-nav { display: flex; align-items: center; gap: 4px; background: #1f2a44; padding: 0 20px; height: 46px; flex-wrap: wrap; }
+.site-nav a { color: #c9d4e8; text-decoration: none; font-size: 13.5px; padding: 7px 16px; border-radius: 8px; white-space: nowrap; }
+.site-nav a:hover { color: #fff; background: #2d4a7c; }
+.site-nav a.active { color: #fff; background: #2d4a7c; font-weight: 600; border-bottom: 2px solid #ffd200; }
+.site-nav .nav-spacer { flex: 1; }
+.site-nav .nav-date { color: #8b9bb8; font-size: 12px; }
+.home-kpi-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #d0d7de; }
+.kpi-card { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 10px; padding: 10px 14px; }
+.kpi-card .k-label { font-size: 11px; color: #57606a; }
+.kpi-card .k-value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.kpi-card .k-sub { font-size: 11px; color: #8b949e; margin-top: 1px; }
 </style>
 <script src="correlation_data.js"></script>
 <script src="positions_data.js"></script>
@@ -653,6 +665,29 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
             <div class="header-stat"><span>数据更新</span><span class="value" id="update-time">--:--:--</span></div>
             <a class="header-stat" href="./intro.html" style="text-decoration:none;cursor:pointer;padding:4px 10px;border:1px solid #ffd20066;border-radius:6px;" title="衡合FOF 组合跟投系统简介"><span>📖</span><span class="value" style="color:#ffd200">系统简介</span></a>
         </div>
+    </div>
+
+    <!-- 全站导航（改版 2026-08-27） -->
+    <div class="site-nav">
+        <a href="./index.html" class="active">🏠 首页</a>
+        <a href="./follow10.html">🖥 跟投监控</a>
+        <a href="./index.html#matrix">📊 组合矩阵</a>
+        <a href="./account.html">📈 账户分析</a>
+        <a href="./analysis.html">🔬 数据分析</a>
+        <a href="./settings.html">⚙️ 系统设置</a>
+        <a href="./intro.html">📖 系统简介</a>
+        <div class="nav-spacer"></div>
+        <span class="nav-date" id="nav-date">--</span>
+    </div>
+
+    <!-- 首页核心指标带（改版 2026-08-27） -->
+    <div class="home-kpi-bar" id="home-kpi-bar">
+        <div class="kpi-card"><div class="k-label">组合数</div><div class="k-value" id="kpi-combos">10</div><div class="k-sub">6 策略 + 4 跟投</div></div>
+        <div class="kpi-card"><div class="k-label">组合总保证金</div><div class="k-value" id="kpi-margin">--</div><div class="k-sub">10 组合合计</div></div>
+        <div class="kpi-card"><div class="k-label">覆盖品种</div><div class="k-value" id="kpi-variety">--</div><div class="k-sub">合并持仓去重</div></div>
+        <div class="kpi-card"><div class="k-label">数据日</div><div class="k-value" id="kpi-date">--</div><div class="k-sub">组合持仓最新结算日</div></div>
+        <div class="kpi-card"><div class="k-label">自动核准</div><div class="k-value" style="color:#1a7f37;font-size:15px">20:30 全量</div><div class="k-sub">数据就绪后对齐一次</div></div>
+        <div class="kpi-card"><div class="k-label">数据保障</div><div class="k-value" style="color:#0969da;font-size:15px">19:30/20:15</div><div class="k-sub">双查 + 企微汇报</div></div>
     </div>
 
     <!-- 数据新鲜度状态条 -->
@@ -1843,6 +1878,30 @@ function updateFreshnessBar(validCount, invalidCount, totalCount) {
         el.style.color = 'var(--accent-orange)';
     }
 }
+
+// ========== 首页 KPI 指标带（改版 2026-08-27） ==========
+function initHomeKpi() {
+    try {
+        const cp = window.EMBEDDED_COMBO_POSITIONS || {};
+        const keys = Object.keys(cp);
+        let totalMargin = 0, varietySet = new Set(), maxDate = '';
+        keys.forEach(k => {
+            (cp[k] || []).forEach(r => {
+                totalMargin += (r.margin || 0);
+                if (r.variety) varietySet.add(r.variety);
+                if (r.dateline && r.dateline > maxDate) maxDate = r.dateline;
+            });
+        });
+        const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        set('kpi-combos', keys.length || 10);
+        set('kpi-margin', '¥' + (totalMargin / 1e8).toFixed(2) + ' 亿');
+        set('kpi-variety', varietySet.size);
+        set('kpi-date', maxDate || '--');
+        set('nav-date', new Date().toLocaleDateString('zh-CN') + ' · ' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'}));
+    } catch (e) { /* KPI 计算失败不阻塞页面 */ }
+}
+document.addEventListener('DOMContentLoaded', initHomeKpi);
+if (document.readyState !== 'loading') setTimeout(initHomeKpi, 500);
 
 // ========== 组合卡片矩阵 ==========
 function renderPortfolioCards() {
