@@ -434,7 +434,17 @@ function updateCountdown(){
     }
   }
   else if(now < mk(21,0)){ next=mk(21,0); label='20:30 已核准 · 21:00 开盘执行'; }
-  else { next=mk(9,0); next.setDate(next.getDate()+1); label='夜盘执行中 · 次日 09:00 撮合'; }
+  else {
+    // 21:00 夜盘后：取数轮询继续（直到 done） + 夜盘执行
+    if(done){ next=mk(9,0); next.setDate(next.getDate()+1); label='夜盘执行中 · 已全部取到 · 次日 09:00 撮合'; }
+    else {
+      const base = mk(19,30);
+      const mins = Math.floor((now - base)/60000);
+      const nextMins = (Math.floor(mins/15)+1)*15;
+      next = new Date(base.getTime() + nextMins*60000);
+      label = '继续轮询（每 15 分钟）· 夜盘执行中';
+    }
+  }
   const s = Math.max(0, Math.floor((next-now)/1000));
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
   const pad = n=>String(n).padStart(2,'0');
