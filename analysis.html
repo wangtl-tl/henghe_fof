@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据分析 · 衡合FOF</title>
+<style>
+:root{--up:#cf222e;--down:#1a7f37;--blue:#0969da;--gold:#ba7517;--text:#1f2328;--sub:#57606a;--weak:#8b949e;--page:#f6f8fa;--card:#fff;--line:#d0d7de;--nav:#1f2a44}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--page);color:var(--text);font-size:14px}
+.topnav{background:var(--nav);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:24px}
+.topnav .brand{font-weight:700;font-size:16px;letter-spacing:1px}
+.topnav .navlink{color:#c9d4e8;text-decoration:none;font-size:13px;padding:4px 10px;border-radius:6px}
+.topnav .navlink.active{background:#2d4a7c;color:#fff}
+.topnav .navlink:hover{color:#fff}
+.topnav .spacer{flex:1}
+.topnav .nav-date{color:#8b9bb8;font-size:12px}
+.wrap{max-width:1280px;margin:0 auto;padding:16px 20px 40px}
+.tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:8px 18px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--sub);border:none;background:transparent}
+.tab:hover{background:#f0f4fa;color:var(--text)}
+.tab.active{background:var(--nav);color:#fff;font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .label{font-size:12px;color:var(--weak);margin-bottom:4px}
+.card .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.card .sub{font-size:11px;color:var(--weak);margin-top:2px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.panel h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h3 .hint{font-size:11px;color:var(--weak);font-weight:400}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f6f8fa;color:var(--sub);font-weight:600;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid #eef1f5;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr:hover td{background:#fafbfc}
+.up{color:var(--up)}.down{color:var(--down)}.muted{color:var(--weak)}
+.filterbar{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap;font-size:13px}
+.filterbar select,.filterbar input{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:#fff}
+.bar-bg{background:#eef1f5;border-radius:4px;height:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px}
+.mini-legend{display:flex;gap:14px;font-size:12px;color:var(--sub);margin-top:8px;flex-wrap:wrap}
+.footer{text-align:center;color:var(--weak);font-size:12px;padding:20px 0}
+svg{display:block;width:100%;height:auto}
+</style>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">衡合FOF</span>
+  <a class="navlink" href="index.html">首页</a>
+  <a class="navlink" href="follow10.html">跟投监控</a>
+  <a class="navlink" href="index.html#matrix">组合矩阵</a>
+  <a class="navlink active" href="analysis.html">数据分析</a>
+  <a class="navlink" href="account.html">账户分析</a>
+  <a class="navlink" href="settings.html">系统设置</a>
+  <div class="spacer"></div>
+  <span class="nav-date" id="nav-date">--</span>
+</div>
+<div class="wrap">
+  <div class="tabs" id="mainTabs">
+    <button class="tab active" data-tab="pool">盘手池</button>
+    <button class="tab" data-tab="style">风格矩阵</button>
+    <button class="tab" data-tab="corr">相关性</button>
+    <button class="tab" data-tab="variety">品种透视</button>
+  </div>
+  <div id="mainContent"></div>
+  <div class="footer">数据来源：衡合FOF跟投系统 · 仅供内部参考，不构成投资建议</div>
+</div>
+
+<script src="trader_tags.js"></script>
+<script src="trader_pool.js"></script>
+<script src="correlation_data.js"></script>
+<script src="combo_positions.js"></script>
+<script src="portfolio_data.js"></script>
+<script src="trade_pnl.js"></script>
+<script>
+const UP='#cf222e', DOWN='#1a7f37', BLUE='#0969da';
+const fmt = v => v===null||v===undefined||isNaN(v) ? '—' : Number(v).toLocaleString('zh-CN');
+const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STRAT_CN = {trend_following:'趋势跟踪',intraday:'日内短线',swing:'波段',arbitrage:'套利',hft:'高频',market_making:'做市',program:'程序化',unknown:'未知'};
+const PERIOD_CN = {short:'短线',medium:'中频',long:'中长线',intraday:'日内',unknown:'未知'};
+let tab = 'pool';
+const POOL_CN = {core:'核心池', satellite:'卫星池', watch:'观察池', eliminate:'淘汰池'};
+
+function svgBars(items, w=700, h=220){
+  if(!items || !items.length) return '<div class="empty">暂无数据</div>';
+  const n = items.length, bw = Math.min(40, (w-40)/n*0.7), gap = Math.min(14, (w-40)/n*0.3);
+  const max = Math.max(...items.map(i=>i.v)) || 1;
+  let out = items.map((it,i)=>{
+    const x = 20 + i*((w-40)/n);
+    const bh = it.v/max*(h-50);
+    return `<rect x="${x+gap/2}" y="${h-30-bh}" width="${bw}" height="${bh}" fill="${BLUE}" rx="2" opacity="0.85"><title>${esc(it.k)}：${fmt(it.v)}</title></rect>`;
+  }).join('');
+  const lbl = items.slice(0, Math.min(14,n)).map((it,i)=>{
+    const x = 20+i*((w-40)/n)+gap/2;
+    return `<text x="${x+bw/2}" y="${h-12}" text-anchor="middle" font-size="9" fill="#8b949e" transform="rotate(-30 ${x+bw/2} ${h-12})">${esc(it.k)}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}"><line x1="10" x2="${w-10}" y1="${h-30}" y2="${h-30}" stroke="#d0d7de"/>${out}${lbl}</svg>`;
+}
+function svgHBar(items, w=700){
+  if(!items || !items.length) return '<div class="empty">暂无数据</div>';
+  const n = items.length, rowH = 22;
+  const h = n*rowH + 30;
+  const max = Math.max(...items.map(i=>i.v)) || 1;
+  let out = items.map((it,i)=>{
+    const y = 12 + i*rowH;
+    const bw = it.v/max*(w-180);
+    const cls = it.c ? (it.c>0?UP:DOWN) : BLUE;
+    return `<rect x="${w-160-bw}" y="${y+2}" width="${Math.max(bw,2)}" height="15" fill="${cls}" opacity="0.85" rx="2"><title>${esc(it.k)}：${fmt(it.v)}</title></rect>
+      <text x="${w-166}" y="${y+14}" text-anchor="end" font-size="11" fill="#57606a">${esc(it.k)}</text>
+      <text x="${w-150}" y="${y+14}" font-size="11" fill="#1f2328" font-weight="600">${it.v}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}">${out}</svg>`;
+}
+
+function render(){
+  document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
+  const el = document.getElementById('mainContent');
+  if(tab==='pool') el.innerHTML = rPool();
+  else if(tab==='style') el.innerHTML = rStyle();
+  else if(tab==='corr') el.innerHTML = rCorr();
+  else el.innerHTML = rVariety();
+}
+document.getElementById('mainTabs').addEventListener('click', e=>{
+  const t = e.target.closest('.tab'); if(!t) return;
+  tab = t.dataset.tab; render();
+});
+
+// ---------- Tab1 盘手池 ----------
+function rPool(){
+  const pool = window.TRADER_POOL || {};
+  const pools = ['core','satellite','watch','eliminate'];
+  const cards = pools.map(p=>`<div class="card"><div class="label">${POOL_CN[p]||p}</div><div class="value">${fmt((pool[p]||[]).length)}</div><div class="sub">盘手</div></div>`);
+  const all = pools.flatMap(p=>(pool[p]||[]).map(r=>({pool:p, aid:r[0], name:r[1], yield:parseFloat(r[2])||0, dd:parseFloat(r[3])||0, calmar:r[4], strategy:r[5]||'', star:r[6]||''})));
+  const rows = all.map(r=>`<tr>
+    <td>${esc(r.name)} <span class="muted">#${r.aid}</span></td>
+    <td>${POOL_CN[r.pool]}</td>
+    <td class="up">${fmt(r.yield)}%</td>
+    <td class="down">${fmt(r.dd)}%</td>
+    <td>${r.calmar!==undefined&&r.calmar!==null?Number(r.calmar).toFixed(2):'—'}</td>
+    <td>${esc(STRAT_CN[r.strategy]||r.strategy||'—')}</td>
+    <td>${esc(r.star||'')}</td></tr>`).join('');
+  return `<div class="cards">${cards.join('')}</div>
+  <div class="panel"><h3>盘手池明细 <span class="hint">共 ${fmt(all.length)} 人 · 点击表头可筛选</span></h3>
+    <div class="filterbar">
+      <select id="poolFilter" onchange="applyPoolFilter()"><option value="">全部池</option>${pools.map(p=>`<option value="${p}">${POOL_CN[p]}</option>`).join('')}</select>
+      <input id="poolKw" placeholder="搜索名称/ID/策略" oninput="applyPoolFilter()" style="width:200px">
+      <span class="muted">星级与池分类来自筛选评估（2026-08）</span>
+    </div>
+    <div style="max-height:520px;overflow-y:auto"><table id="poolTable">
+      <tr><th>盘手</th><th>池</th><th>年化</th><th>回撤</th><th>Calmar</th><th>策略</th><th>星级</th></tr>
+      ${rows}</table></div>
+  </div>`;
+}
+function applyPoolFilter(){
+  const p = document.getElementById('poolFilter').value;
+  const kw = (document.getElementById('poolKw').value||'').trim().toLowerCase();
+  const pool = window.TRADER_POOL || {};
+  const pools = ['core','satellite','watch','eliminate'];
+  const all = pools.flatMap(pk=>(pool[pk]||[]).map(r=>({pool:pk, aid:r[0], name:r[1], yield:parseFloat(r[2])||0, dd:parseFloat(r[3])||0, calmar:r[4], strategy:r[5]||'', star:r[6]||''})));
+  const rows = all.filter(r=>{
+    if(p && r.pool!==p) return false;
+    if(kw && !(r.name+' '+r.aid+' '+r.strategy+' '+r.star).toLowerCase().includes(kw)) return false;
+    return true;
+  }).map(r=>`<tr>
+    <td>${esc(r.name)} <span class="muted">#${r.aid}</span></td>
+    <td>${POOL_CN[r.pool]}</td>
+    <td class="up">${fmt(r.yield)}%</td>
+    <td class="down">${fmt(r.dd)}%</td>
+    <td>${r.calmar!==undefined&&r.calmar!==null?Number(r.calmar).toFixed(2):'—'}</td>
+    <td>${esc(STRAT_CN[r.strategy]||r.strategy||'—')}</td>
+    <td>${esc(r.star||'')}</td></tr>`).join('');
+  document.getElementById('poolTable').innerHTML = `<tr><th>盘手</th><th>池</th><th>年化</th><th>回撤</th><th>Calmar</th><th>策略</th><th>星级</th></tr>${rows}`;
+}
+
+// ---------- Tab2 风格矩阵 ----------
+function rStyle(){
+  const tags = window.TRADER_TAGS || [];
+  const strat = {}, period = {}, method = {}, variety = {};
+  tags.forEach(t=>{
+    const tg = t.tags||{};
+    const s = (tg.strategy||{}).primary||'unknown';
+    strat[s] = (strat[s]||0)+1;
+    const p = (tg.holding_period||{}).period||'unknown';
+    period[p] = (period[p]||0)+1;
+    const m = (tg.method||{}).method||'unknown';
+    method[m] = (method[m]||0)+1;
+    const v = (tg.variety||{}).primary||'unknown';
+    variety[v] = (variety[v]||0)+1;
+  });
+  const stratBars = Object.entries(strat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k:STRAT_CN[k]||k, v}));
+  const periodBars = Object.entries(period).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k:PERIOD_CN[k]||k, v}));
+  const methodBars = Object.entries(method).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k, v}));
+  const varCN = {agri:'农产品',black:'黑色系',energy:'能化',metal:'有色金属',bond:'国债',index:'股指',soft:'软商品',chemical:'化工',nonmetal:'非金属',unknown:'未知',futures:'商品期货'};
+  const varietyBars = Object.entries(variety).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([k,v])=>({k:varCN[k]||k, v}));
+  return `<div class="cols">
+    <div class="panel"><h3>策略类型分布 <span class="hint">${fmt(tags.length)} 人</span></h3>${svgBars(stratBars)}</div>
+    <div class="panel"><h3>持仓周期分布</h3>${svgBars(periodBars)}</div>
+  </div>
+  <div class="cols">
+    <div class="panel"><h3>交易方式分布</h3>${svgBars(methodBars)}</div>
+    <div class="panel"><h3>主品种板块分布</h3>${svgBars(varietyBars)}</div>
+  </div>
+  <div class="panel"><h3>风格×池交叉 <span class="hint">各池内策略构成</span></h3>
+    <table><tr><th>池</th><th>人数</th><th>主要策略</th></tr>${
+    ['core','satellite','watch','eliminate'].map(p=>{
+      const pool = window.TRADER_POOL||{};
+      const aids = new Set((pool[p]||[]).map(r=>r[0]));
+      const inPool = tags.filter(t=>aids.has(t.aid));
+      const sc = {};
+      inPool.forEach(t=>{const s=(t.tags||{}).strategy||{}; const k=s.primary||'unknown'; sc[k]=(sc[k]||0)+1;});
+      const top = Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${STRAT_CN[k]||k} ${v}`).join('、');
+      return `<tr><td>${POOL_CN[p]}</td><td>${fmt(inPool.length)}</td><td>${esc(top||'—')}</td></tr>`;
+    }).join('')}</table>
+  </div>`;
+}
+
+// ---------- Tab3 相关性 ----------
+function corrMatrix(ids, getCorr, nameFn){
+  const n = ids.length;
+  if(n<2) return '<div class="empty">样本不足</div>';
+  const cell = 30;
+  const w = 60 + n*cell, h = 40 + n*cell;
+  let body = '';
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      if(i===j){ body += `<rect x="${60+j*cell}" y="${40+i*cell}" width="${cell-1}" height="${cell-1}" fill="#fff" stroke="#eee"/>`; continue; }
+      let c = getCorr(ids[i], ids[j]);
+      if(c===null||c===undefined) c = 0;
+      const a = Math.min(Math.abs(c),1);
+      const rgb = c>=0 ? `rgba(207,34,46,${0.08+a*0.55})` : `rgba(26,127,55,${0.08+a*0.55})`;
+      body += `<rect x="${60+j*cell}" y="${40+i*cell}" width="${cell-1}" height="${cell-1}" fill="${rgb}"><title>${nameFn(ids[i])} × ${nameFn(ids[j])} = ${c.toFixed(2)}</title></rect>`;
+    }
+  }
+  let labels = ids.map((id,i)=>`<text x="${60+i*cell+cell/2}" y="${36}" text-anchor="middle" font-size="9" fill="#57606a" transform="rotate(-45 ${60+i*cell+cell/2} 36)">${esc(nameFn(id))}</text>`).join('');
+  let ylabels = ids.map((id,i)=>`<text x="56" y="${40+i*cell+cell/2}" text-anchor="end" font-size="9" fill="#57606a">${esc(nameFn(id))}</text>`).join('');
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${w} ${h}">${body}${labels}${ylabels}</svg></div>
+  <div class="mini-legend"><span>■ 正相关（红）</span><span>■ 负相关（绿）</span><span>基于日收益率皮尔逊相关系数</span></div>`;
+}
+function rCorr(){
+  const corr = window.REAL_CORR_DATA || {};
+  const ids = (corr.accountIds||[]).slice(0,20);
+  const getC = (a,b)=>{
+    try{ return corr.getCorrelation ? corr.getCorrelation(a,b) : 0; }catch(e){ return 0; }
+  };
+  const nm = id => {
+    const tags = window.TRADER_TAGS || [];
+    const t = tags.find(x=>x.aid===id);
+    return t ? t.name : id;
+  };
+  // 组合相关性（从 EMBEDDED_PORTFOLIO 日收益算）
+  const pf = window.EMBEDDED_PORTFOLIO || {};
+  const combos = Object.keys(pf).filter(k=>pf[k]&&pf[k].nav_values);
+  const comboRet = {};
+  combos.forEach(c=>{
+    const nv = pf[c].nav_values;
+    const ret = [];
+    for(let i=1;i<nv.length;i++) ret.push(nv[i]/nv[i-1]-1);
+    comboRet[c] = ret;
+  });
+  const corr2 = (a,b)=>{
+    const ra = comboRet[a], rb = comboRet[b];
+    if(!ra||!rb) return 0;
+    const n = Math.min(ra.length, rb.length);
+    if(n<30) return 0;
+    const ra2 = ra.slice(-n), rb2 = rb.slice(-n);
+    const ma = ra2.reduce((s,x)=>s+x,0)/n, mb = rb2.reduce((s,x)=>s+x,0)/n;
+    let num=0, da=0, db=0;
+    for(let i=0;i<n;i++){ num+=(ra2[i]-ma)*(rb2[i]-mb); da+=(ra2[i]-ma)**2; db+=(rb2[i]-mb)**2; }
+    if(!da||!db) return 0;
+    return num/Math.sqrt(da*db);
+  };
+  const comboName = c => (pf[c].name||c).replace('组合','').replace('全能主','').replace('优质','');
+  return `<div class="cols">
+    <div class="panel"><h3>10 组合净值相关性 <span class="hint">日收益皮尔逊</span></h3>${corrMatrix(combos, corr2, comboName)}</div>
+    <div class="panel"><h3>核心成员相关性 <span class="hint">活跃账户 TOP20</span></h3>${corrMatrix(ids, getC, nm)}</div>
+  </div>
+  <div class="panel"><h3>说明</h3>
+    <div class="mini-legend"><span>组合间相关性用于评估分散度：相关度 &lt; 0.5 的组合搭配可降低整体波动</span>
+    <span>成员相关性来自 2026-08-19 重建的账户 NAV 日收益矩阵</span></div>
+  </div>`;
+}
+
+// ---------- Tab4 品种透视 ----------
+function rVariety(){
+  const cp = window.EMBEDDED_COMBO_POSITIONS || {};
+  const varietyAgg = {};
+  const byCombo = {};
+  Object.entries(cp).forEach(([combo, recs])=>{
+    (recs||[]).forEach(r=>{
+      const v = r.variety || '?';
+      const nm = r.name || v;
+      varietyAgg[v] = varietyAgg[v] || {name:nm, margin:0, lots:0, combos:new Set(), net:0};
+      varietyAgg[v].margin += r.margin||0;
+      varietyAgg[v].lots += Math.abs(r.net||0);
+      varietyAgg[v].net += r.net||0;
+      varietyAgg[v].combos.add(combo);
+      byCombo[combo] = byCombo[combo] || {count:0, margin:0};
+      byCombo[combo].count++;
+      byCombo[combo].margin += r.margin||0;
+    });
+  });
+  const rows = Object.entries(varietyAgg).sort((a,b)=>b[1].margin-a[1].margin).map(([v, d])=>({
+    code:v, name:d.name, margin:d.margin, lots:d.lots, ncombos:d.combos.size, net:d.net
+  }));
+  const topRows = rows.slice(0,20);
+  const maxM = Math.max(...rows.map(r=>r.margin))||1;
+  const table = rows.map(r=>`<tr>
+    <td>${esc(r.name)} <span class="muted">${r.code}</span></td>
+    <td>${fmt(r.ncombos)}</td>
+    <td class="${r.net>0?'up':(r.net<0?'down':'')}">${fmt(Math.abs(r.net))}</td>
+    <td>${fmt(r.lots)}</td>
+    <td>¥${(r.margin/1e4).toFixed(0)} 万</td>
+    <td><div class="bar-bg" style="width:110px"><div class="bar-fill" style="width:${r.margin/maxM*100}%;background:${BLUE}"></div></div></td></tr>`).join('');
+  const comboRows = Object.entries(byCombo).map(([c,d])=>({combo:c, count:d.count, margin:d.margin}))
+    .sort((a,b)=>b.margin-a.margin)
+    .map(r=>`<tr><td>${esc((window.EMBEDDED_PORTFOLIO[r.combo]||{}).name||r.combo)}</td><td>${fmt(r.count)}</td><td>¥${(r.margin/1e4).toFixed(0)} 万</td><td>${(r.margin/Object.values(byCombo).reduce((s,x)=>s+x.margin,0)*100).toFixed(1)}%</td></tr>`).join('');
+  const hbars = topRows.map(r=>({k:r.name, v:'¥'+(r.margin/1e4).toFixed(0)+'万', c:0}));
+  // 自定义 hbar 用文本值
+  const hb2 = topRows.map((r,i)=>{
+    const bw = r.margin/maxM*100;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="width:90px;font-size:12px;color:#57606a;flex-shrink:0">${esc(r.name)}</span>
+      <div class="bar-bg" style="flex:1"><div class="bar-fill" style="width:${bw}%;background:${BLUE}"></div></div>
+      <span style="width:80px;font-size:12px;font-weight:600;text-align:right">¥${(r.margin/1e4).toFixed(0)}万</span></div>`;
+  }).join('');
+  return `<div class="cards">
+    <div class="card"><div class="label">覆盖品种</div><div class="value">${fmt(rows.length)}</div><div class="sub">全组合去重</div></div>
+    <div class="card"><div class="label">组合数</div><div class="value">${fmt(Object.keys(cp).length)}</div><div class="sub">10 组合</div></div>
+    <div class="card"><div class="label">总保证金</div><div class="value">¥${(Object.values(byCombo).reduce((s,x)=>s+x.margin,0)/1e8).toFixed(2)}亿</div><div class="sub">10 组合合计</div></div>
+    <div class="card"><div class="label">最大品种占比</div><div class="value">${(rows[0]?rows[0].margin/Object.values(byCombo).reduce((s,x)=>s+x.margin,0)*100:0).toFixed(1)}%</div><div class="sub">${esc(rows[0]?rows[0].name:'')}</div></div>
+  </div>
+  <div class="cols">
+    <div class="panel"><h3>品种保证金集中度 TOP20</h3>${hb2}</div>
+    <div class="panel"><h3>各组合品种规模</h3>
+      <table><tr><th>组合</th><th>品种数</th><th>保证金</th><th>占比</th></tr>${comboRows}</table></div>
+  </div>
+  <div class="panel"><h3>品种明细（全量）</h3>
+    <div style="max-height:440px;overflow-y:auto"><table>
+      <tr><th>品种</th><th>组合数</th><th>净方向</th><th>总手数</th><th>保证金</th><th>占比</th></tr>${table}</table></div>
+  </div>`;
+}
+
+document.getElementById('nav-date').textContent = new Date().toLocaleDateString('zh-CN');
+render();
+</script>
+</body>
+</html>
