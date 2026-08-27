@@ -35,6 +35,18 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--pag
 .subtab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+/* 持仓分析单页版面（2026-08-27 重做） */
+.grid-3{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px}
+@media(max-width:1080px){.grid-3{grid-template-columns:1fr}}
+.pos-table-wrap,.trade-table-wrap{max-height:380px;overflow-y:auto;border:1px solid #eef1f5;border-radius:8px}
+.pos-table-wrap th{position:sticky;top:0;z-index:1}
+.chips-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.chip-btn{padding:6px 14px;background:var(--card);border:1px solid var(--line);border-radius:18px;cursor:pointer;font-size:13px;color:var(--text);transition:all .15s}
+.chip-btn:hover{border-color:var(--blue);color:var(--blue)}
+.chip-btn.on{background:#fff7e6;border-color:#f0c674;color:#a06000;font-weight:600}
+.details-toggle{font-size:12px;color:var(--blue);cursor:pointer;margin-top:8px;user-select:none}
+.details-area{margin-top:8px;padding-top:8px;border-top:1px dashed #eaeef2;display:none}
+.details-area.open{display:block}
 .card .label{font-size:12px;color:var(--weak);margin-bottom:4px}
 .card .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 .card .sub{font-size:11px;color:var(--weak);margin-top:2px}
@@ -126,7 +138,7 @@ const UP = '#cf222e', DOWN = '#1a7f37', BLUE = '#0969da';
 const COMBOS = Object.keys(AA);
 const urlParams = new URLSearchParams(location.search);
 let combo = urlParams.get('combo') || (COMBOS[0] || '');
-let mainTab = 'overview', subTab = 'trades';
+let mainTab = 'overview';
 let page = 1, pageSize = 20;
 
 const fmt = (v, d=0) => v===null||v===undefined||isNaN(v) ? '—' : Number(v).toLocaleString('zh-CN', {maximumFractionDigits:d, minimumFractionDigits:0});
@@ -491,59 +503,109 @@ function rRisk(D){
   </div>`;
 }
 
-// ---------- 持仓分析（7 子 Tab） ----------
+// ---------- 持仓分析（单页完整版面，2026-08-27 重做） ----------
 function rPositions(D){
   const sim = D.sim||{};
-  const subtabs = [
-    ['live','实时监控'],['trades','成交明细'],['pos','持仓汇总'],['posdetail','持仓明细'],
-    ['close','平仓明细'],['deposit','出入金明细'],['opt','期权成交'],['optpos','期权持仓'],
-  ];
-  let body = '';
-  if(subTab==='live') body = rSubLive(sim);
-  else if(subTab==='trades') body = rSubTrades(sim);
-  else if(subTab==='pos') body = rSubPos(sim, true);
-  else if(subTab==='posdetail') body = rSubPos(sim, false);
-  else if(subTab==='close') body = rSubClose(sim);
-  else body = rSubEmpty(subTab);
-  return `
-  <div class="subtabs">${subtabs.map(s=>`<button class="subtab ${s[0]===subTab?'active':''}" data-sub="${s[0]}">${s[1]}</button>`).join('')}</div>
-  ${body}`;
-}
-// 实时监控（实时数据整合·首屏）
-function rSubLive(sim){
   const a = sim.account||{};
-  const b=a.balance||0, avail=a.available||0, m=a.margin||0, fp=a.float_profit||0;
+  const b=a.balance||0, avail=a.available||0, m=a.margin||0, fp=a.float_profit||0, pp=a.position_profit||0;
   const risk = b?(m/b*100):0;
-  const seg = segLabel();
+  // 6 指标卡（与截图一致：动态权益/可用资金/占用保证金/持仓盈亏/浮动盈亏/风险度）
   const cards = [
-    ['动态权益', wan(b)+' 万', ''],
-    ['可用资金', wan(avail)+' 万', ''],
-    ['占用保证金', wan(m)+' 万', ''],
-    ['持仓盈亏', pnlTxt(fp), ''],
-    ['风险度', risk.toFixed(1)+'%', risk>75?'⚠️ 偏高':'正常'],
+    ['动态权益', fmt(b,2)],
+    ['可用资金', fmt(avail,2)],
+    ['占用保证金', fmt(m,2)],
+    ['持仓盈亏', fmt(fp,2)],
+    ['浮动盈亏', fmt(pp,2)],
+    ['风险度', risk.toFixed(2)+'%'],
   ];
-  // 模拟账户净值曲线（在线用 /api/nav，快照用 sim.nav）
-  let line = '';
+  // 模拟账户净值曲线
   const ln = LIVE_NAV[combo] || sim.nav || [];
+  let line = '<div class="empty">暂无净值曲线</div>';
   if(ln && ln.t) line = svgSimLine(ln.t.map(t=>t*1000), ln.balance);
   else if(ln.length>1) line = svgSimLine(ln.map(p=>p.t*1000), ln.map(p=>p.balance));
-  else line = '<div class="empty">暂无净值曲线（快照生成后更新）</div>';
-  const logs = (sim.logs||[]).slice(-40).map(l=>'<div>'+esc(l)+'</div>').join('');
+  // 持仓明细（去重期权）
+  const positions = (sim.positions||[]).filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
+  const posRows = positions.map(p=>{
+    const sym=p.symbol||'';
+    const side = (p.long||0)>(p.short||0)?'多':((p.short||0)>(p.long||0)?'空':'—');
+    return `<tr><td>${esc(sym)}</td><td class="up">${fmt(p.long)}</td><td class="down">${fmt(p.short)}</td>
+      <td>${side}</td><td>${fmt(p.last,2)}</td>
+      <td class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))}万</td>
+      <td>${fmt(wan(p.margin,0),0)}万</td></tr>`;
+  }).join('');
+  // 成交记录（最近 30 笔）
+  const trades = (sim.trades||[]).slice(-30).reverse();
+  const tradeRows = trades.map(t=>`<tr>
+    <td>${esc(t.tstr||'')}</td><td>${esc(t.symbol||'')}</td>
+    <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
+    <td>${t.offset==='OPEN'?'开':'平'}</td>
+    <td>${fmt(t.volume)}</td><td>${fmt(t.price,2)}</td>
+    <td>${fmt(t.commission,1)}</td></tr>`).join('');
+  // 10 组合 chips（点击切换）
+  const comboChips = COMBOS.map(c=>`<button class="chip-btn ${c===combo?'on':''}" onclick="switchCombo('${c}')">${esc(((AA[c]||{}).name||c).replace('组合','').replace('全能主','').replace('优质',''))}</button>`).join('');
+  // 系统日志
+  const logs = (sim.logs||[]).slice(-50).map(l=>'<div>'+esc(l)+'</div>').join('');
+  // 时段灯
+  const seg = segLabel();
   const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
   return `
   <div class="ready-bar">📡 ${readinessHtml()} ${liveTag}</div>
-  <div class="live-cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
-  <div class="panel"><h3>模拟账户净值曲线 <span class="hint">账户权益时序</span></h3>${line}</div>
-  <div class="live-status">
-    <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
-    <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
-    <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
-    <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
-    <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
+  <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
+  <div class="grid-3">
+    <div class="panel"><h3>账户净值曲线 <span class="hint">实时</span></h3>${line}
+      <div class="live-status" style="margin-top:6px">
+        <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
+        <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
+        <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
+        <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
+        <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
+      </div>
+    </div>
+    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条</span></h3>
+      <div class="pos-table-wrap"><table>
+        <tr><th>合约</th><th>多单</th><th>空单</th><th>方向</th><th>最新价</th><th>浮动盈亏</th><th>保证金(万)</th></tr>
+        ${posRows||'<tr><td colspan="7" class="empty">暂无持仓</td></tr>'}</table></div>
+    </div>
+    <div class="panel"><h3>成交记录 <span class="hint">最近 ${trades.length} 笔</span></h3>
+      <div class="trade-table-wrap"><table>
+        <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>价格</th><th>手续费</th></tr>
+        ${tradeRows||'<tr><td colspan="7" class="empty">暂无成交</td></tr>'}</table></div>
+    </div>
   </div>
-  <div class="panel" style="margin-top:12px"><h3>系统日志 <span class="hint">核准/调仓/成交</span></h3>
+  <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
+    <div class="chips-row">${comboChips}</div>
+  </div>
+  <div class="panel" style="margin-top:12px"><h3>系统日志 <span class="hint">核准/调仓/成交（最近 50 条）</span></h3>
     <div class="log-box">${logs||'<div>暂无日志</div>'}</div>
+    <div class="details-toggle" onclick="this.nextElementSibling.classList.toggle('open')">▾ 详细数据（平仓明细/出入金/期权）</div>
+    <div class="details-area">${rDetails(sim)}</div>
   </div>`;
+}
+function rDetails(sim){
+  // 平仓明细（最近 30）
+  const closes = (sim.close_trades||[]).slice(-30);
+  const closeRows = closes.map(c=>`<tr>
+    <td>${c.day||'—'}</td><td>${esc(c.symbol)}</td>
+    <td class="${c.direction==='BUY'?'up':'down'}">${c.direction==='BUY'?'买':'卖'}</td>
+    <td>${fmt(c.volume)}</td><td>${fmt(c.open_price,2)}</td><td>${fmt(c.close_price,2)}</td>
+    <td class="${pnlCls(c.profit)}">${pnlTxt(wan(c.profit,1))}万</td>
+    <td>${fmt(c.commission,1)}</td></tr>`).join('');
+  const settle = sim.settle||{};
+  const hasOpts = (sim.positions||[]).some(p=>/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
+  return `
+  <div style="margin-top:10px"><b>平仓明细（最近 ${closes.length} 笔）</b></div>
+  <div class="trade-table-wrap" style="margin-top:6px"><table>
+    <tr><th>日期</th><th>合约</th><th>方向</th><th>手数</th><th>开仓价</th><th>平仓价</th><th>盈亏(万)</th><th>手续费</th></tr>
+    ${closeRows||'<tr><td colspan="8" class="empty">暂无平仓记录（每日 15:30 结算后更新）</td></tr>'}</table></div>
+  <div style="margin-top:14px"><b>出入金明细</b> · 初始 3000 万 · 浮盈亏在账内流转</div>
+  <table style="margin-top:6px;width:auto">
+    <tr><th>结算日</th><th>初始权益</th><th>日手续费</th><th>日平仓盈亏</th><th>持仓盈亏</th><th>结算权益</th></tr>
+    <tr><td>${esc(settle.settle_date||'—')}</td><td>${fmt(settle.open_balance,0)}</td>
+      <td>${fmt(settle.day_commission,1)}</td><td>${fmt(settle.day_close_profit,1)}</td>
+      <td>${fmt(settle.position_profit,0)}</td><td>${fmt(settle.balance,0)}</td></tr>
+  </table>
+  <div style="margin-top:14px"><b>期权持仓/成交</b></div>
+  <div class="empty">${hasOpts?'包含期权合约（如有）':'本组合以商品期货为主，暂无期权持仓/成交'}</div>`;
 }
 function svgSimLine(ts, vals){
   if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
@@ -566,97 +628,6 @@ function svgSimLine(ts, vals){
     <text x="${pad}" y="${h-4}" font-size="10" fill="#8b949e">${tLabel}</text>
   </svg>`;
 }
-function rSubTrades(sim){
-  const trades = sim.trades||[];
-  // 默认最近 30 天
-  const cutoff = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
-  const dayOf = t => (t.tstr||'').slice(0,10) || (t.trade_date_time||'').toString().slice(0,10);
-  const filtered = trades.filter(t => !dayOf(t) || dayOf(t) >= cutoff);
-  const total = filtered.length, pages = Math.max(1, Math.ceil(total/pageSize));
-  if(page>pages) page = pages;
-  const list = filtered.slice((page-1)*pageSize, page*pageSize);
-  const rows = list.map(t=>{
-    const sym = t.symbol||'';
-    const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(sym.split('.').pop()||'');
-    return `<tr>
-      <td>${dayOf(t)||'—'} ${t.tstr||''}</td>
-      <td>${esc(sym)}</td>
-      <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
-      <td>${t.offset==='OPEN'?'开':'平'}</td>
-      <td>${fmt(t.volume)}</td>
-      <td>${fmt(t.price,2)}</td>
-      <td>${fmt((t.volume||0)*(t.price||0)*(t.volume_multiple||1)/1e4,1)} 万</td>
-      <td>${fmt(t.commission,1)}</td></tr>`;
-  }).join('');
-  const filterHtml = `
-    <div class="filterbar">
-      <span>默认显示最近 30 天成交，共 <b>${fmt(total)}</b> 笔</span>
-      <span class="muted">（本组合模拟账户自身成交，与成员/母账户无关）</span>
-    </div>
-    <table><tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>成交价</th><th>成交额(万)</th><th>手续费</th></tr>
-    ${rows||'<tr><td colspan="8" class="empty">暂无成交记录</td></tr>'}</table>
-    <div class="pager"><span>共 ${pages} 页 / ${fmt(total)} 笔</span>
-      <button ${page<=1?'disabled':''} onclick="changePage(-1)">上一页</button>
-      <button ${page>=pages?'disabled':''} onclick="changePage(1)">下一页</button></div>`;
-  return filterHtml;
-}
-function rSubPos(sim, summary){
-  const pos = sim.positions||[];
-  const rows = pos.map(p=>{
-    const sym = p.symbol||'';
-    const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(sym.split('.').pop()||'');
-    if(isOpt) return '';
-    const side = (p.long||0)>(p.short||0) ? '多' : ((p.short||0)>(p.long||0) ? '空' : '—');
-    return `<tr>
-      <td>${esc(sym)}</td>
-      <td class="up">${fmt(p.long)}</td><td class="down">${fmt(p.short)}</td>
-      <td>${side}</td>
-      <td>${fmt(p.last,2)}</td>
-      <td class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))} 万</td>
-      <td>${fmt(wan(p.margin,0),0)} 万</td></tr>`;
-  }).filter(Boolean).join('');
-  const sumRows = () => {
-    const bySym = {};
-    pos.forEach(p=>{
-      const key = p.symbol||'';
-      const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(key.split('.').pop()||'');
-      if(isOpt) return;
-      bySym[key] = bySym[key] || {long:0, short:0, profit:0, margin:0, last:p.last};
-      bySym[key].long += p.long||0; bySym[key].short += p.short||0;
-      bySym[key].profit += p.profit||0; bySym[key].margin += p.margin||0;
-    });
-    return Object.entries(bySym).map(([sym,s])=>{
-      const side = s.long>s.short?'多':(s.short>s.long?'空':'—');
-      return `<tr><td>${esc(sym)}</td><td class="up">${fmt(s.long)}</td><td class="down">${fmt(s.short)}</td>
-        <td>${side}</td><td>${fmt(s.last,2)}</td>
-        <td class="${pnlCls(s.profit)}">${pnlTxt(wan(s.profit,1))} 万</td>
-        <td>${fmt(wan(s.margin,0),0)} 万</td></tr>`;
-    }).join('');
-  };
-  const body = summary ? sumRows() : rows;
-  const head = `<table><tr><th>合约</th><th>多单</th><th>空单</th><th>方向</th><th>最新价</th><th>浮动盈亏</th><th>保证金(万)</th></tr>
-    ${body||'<tr><td colspan="7" class="empty">当前无持仓</td></tr>'}</table>`;
-  const note = summary ? '<div class="mini-legend"><span>按合约汇总（同一合约多空净额合并）</span></div>' : '<div class="mini-legend"><span>按账户逐条持仓明细展示</span></div>';
-  return `<div class="filterbar"><span>共 <b>${fmt(pos.length)}</b> 条持仓</span></div>${head}${note}`;
-}
-function rSubClose(sim){
-  const closes = sim.close_trades||[];
-  const rows = closes.map(c=>`<tr>
-    <td>${c.day||'—'}</td><td>${esc(c.symbol)}</td>
-    <td class="${c.direction==='BUY'?'up':'down'}">${c.direction==='BUY'?'买':'卖'}</td>
-    <td>${fmt(c.volume)}</td><td>${fmt(c.open_price,2)}</td><td>${fmt(c.close_price,2)}</td>
-    <td class="${pnlCls(c.profit)}">${pnlTxt(wan(c.profit,1))} 万</td>
-    <td>${fmt(c.commission,1)}</td></tr>`).join('');
-  return `<div class="filterbar"><span>共 <b>${fmt(closes.length)}</b> 笔平仓记录</span></div>
-    <table><tr><th>日期</th><th>合约</th><th>方向</th><th>手数</th><th>开仓价</th><th>平仓价</th><th>盈亏(万)</th><th>手续费</th></tr>
-    ${rows||'<tr><td colspan="8" class="empty">暂无平仓记录（每日 15:30 结算后更新）</td></tr>'}</table>`;
-}
-function rSubEmpty(tab){
-  const map = {deposit:'出入金明细', opt:'期权成交', optpos:'期权持仓'};
-  const hint = {deposit:'本组合模拟账户目前无出入金记录（初始 3000 万，浮盈亏在账内流转）',
-    opt:'组合以商品期货为主，暂无期权成交记录', optpos:'组合以商品期货为主，暂无期权持仓记录'};
-  return `<div class="panel"><h3>${map[tab]}</h3><div class="empty">${hint[tab]||'暂无数据'}</div></div>`;
-}
 function changePage(d){
   page += d; if(page<1) page=1;
   render();
@@ -667,11 +638,6 @@ document.getElementById('mainTabs').addEventListener('click', e=>{
   const t = e.target.closest('.tab'); if(!t) return;
   mainTab = t.dataset.tab; page = 1; render();
 });
-document.getElementById('mainContent').addEventListener('click', e=>{
-  const t = e.target.closest('.subtab'); if(!t) return;
-  subTab = t.dataset.sub; page = 1; render();
-});
-
 initComboSel();
 render();
 tryLive();  // 尝试拉取 18081 实时数据（失败自动回退快照）
