@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>账户分析 · 衡合FOF</title>
+<style>
+:root{
+  --up:#cf222e; --down:#1a7f37; --blue:#0969da; --gold:#ba7517;
+  --text:#1f2328; --sub:#57606a; --weak:#8b949e;
+  --page:#f6f8fa; --card:#ffffff; --line:#d0d7de; --nav:#1f2a44;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--page);color:var(--text);font-size:14px}
+.topnav{background:var(--nav);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:24px}
+.topnav .brand{font-weight:700;font-size:16px;letter-spacing:1px}
+.topnav .navlink{color:#c9d4e8;text-decoration:none;font-size:13px;padding:4px 10px;border-radius:6px}
+.topnav .navlink.active{background:#2d4a7c;color:#fff}
+.topnav .navlink:hover{color:#fff}
+.topnav .spacer{flex:1}
+.topnav .sel{background:#2d4a7c;color:#fff;border:1px solid #44639a;border-radius:6px;padding:5px 10px;font-size:13px;outline:none}
+.wrap{max-width:1280px;margin:0 auto;padding:16px 20px 40px}
+.info-bar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.info-bar h1{font-size:20px;font-weight:700}
+.info-bar .tag{background:#f0f4fa;border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--sub)}
+.info-bar .tag.mode{background:#fff6e5;border-color:#f0c674;color:var(--gold)}
+.info-bar .tag.up{background:#fde8e8;border-color:#f3b8b8;color:var(--up)}
+.info-bar .right{margin-left:auto;font-size:12px;color:var(--sub);text-align:right}
+.tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:8px 18px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--sub);border:none;background:transparent}
+.tab:hover{background:#f0f4fa;color:var(--text)}
+.tab.active{background:var(--nav);color:#fff;font-weight:600}
+.subtabs{display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap}
+.subtab{padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--sub);background:var(--card);border:1px solid var(--line)}
+.subtab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .label{font-size:12px;color:var(--weak);margin-bottom:4px}
+.card .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.card .sub{font-size:11px;color:var(--weak);margin-top:2px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.panel h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h3 .hint{font-size:11px;color:var(--weak);font-weight:400}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px}
+.kv .row{display:flex;justify-content:space-between;border-bottom:1px dashed #eaeef2;padding:5px 0;font-size:13px}
+.kv .row .k{color:var(--sub)}
+.kv .row .v{font-weight:600;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f6f8fa;color:var(--sub);font-weight:600;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid #eef1f5;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr:hover td{background:#fafbfc}
+.up{color:var(--up)} .down{color:var(--down)}
+.muted{color:var(--weak)}
+.bar-bg{background:#eef1f5;border-radius:4px;height:8px;overflow:hidden;min-width:60px}
+.bar-fill{height:100%;border-radius:4px}
+.mini-legend{display:flex;gap:14px;font-size:12px;color:var(--sub);margin-top:8px;flex-wrap:wrap}
+.member-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.member-card .nm{font-weight:600;font-size:14px}
+.member-card .tg{font-size:11px;color:var(--blue);margin-top:3px}
+.member-card .kv2{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-top:6px}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;font-size:13px;color:var(--sub)}
+.pager button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 12px;cursor:pointer}
+.pager button:hover{background:#f0f4fa}
+.pager button:disabled{opacity:.4;cursor:default}
+.filterbar{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap;font-size:13px}
+.filterbar select,.filterbar input{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:#fff}
+.empty{padding:40px;text-align:center;color:var(--weak);font-size:13px}
+.feature-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px}
+.feature-row .fk{width:70px;color:var(--sub);flex-shrink:0}
+.feature-row .fv{width:52px;text-align:right;font-weight:600;flex-shrink:0}
+.footer{text-align:center;color:var(--weak);font-size:12px;padding:20px 0}
+svg{display:block;width:100%;height:auto}
+</style>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">衡合FOF</span>
+  <a class="navlink" href="index.html">首页</a>
+  <a class="navlink" href="follow10.html">跟投监控</a>
+  <a class="navlink" href="index.html#matrix">组合矩阵</a>
+  <a class="navlink" href="analysis.html">数据分析</a>
+  <a class="navlink active" href="account.html">账户分析</a>
+  <a class="navlink" href="settings.html">系统设置</a>
+  <div class="spacer"></div>
+  <select id="comboSel" class="sel"></select>
+</div>
+
+<div class="wrap">
+  <div class="info-bar" id="infoBar"></div>
+  <div class="tabs" id="mainTabs">
+    <button class="tab active" data-tab="overview">总览</button>
+    <button class="tab" data-tab="profile">账户概况</button>
+    <button class="tab" data-tab="profit">盈利分析</button>
+    <button class="tab" data-tab="variety">品种分析</button>
+    <button class="tab" data-tab="risk">风控能力</button>
+    <button class="tab" data-tab="positions">持仓分析</button>
+  </div>
+  <div id="mainContent"></div>
+  <div class="footer">数据来源：衡合FOF跟投系统 · 模拟账户数据与本组合独立采集 · 仅供内部参考，不构成投资建议</div>
+</div>
+
+<script src="portfolio_data.js"></script>
+<script src="account_analysis.js"></script>
+<script>
+const AA = window.ACCOUNT_ANALYSIS || {};
+const PF = window.EMBEDDED_PORTFOLIO || {};
+const UP = '#cf222e', DOWN = '#1a7f37', BLUE = '#0969da';
+const COMBOS = Object.keys(AA);
+const urlParams = new URLSearchParams(location.search);
+let combo = urlParams.get('combo') || (COMBOS[0] || '');
+let mainTab = 'overview', subTab = 'trades';
+let page = 1, pageSize = 20;
+
+const fmt = (v, d=0) => v===null||v===undefined||isNaN(v) ? '—' : Number(v).toLocaleString('zh-CN', {maximumFractionDigits:d, minimumFractionDigits:0});
+const wan = (v, d=0) => v===null||v===undefined||isNaN(v) ? '—' : (Number(v)/1e4).toLocaleString('zh-CN', {maximumFractionDigits:d});
+const pct = v => v===null||v===undefined||isNaN(v) ? '—' : (Number(v)).toFixed(1)+'%';
+const pnlCls = v => v>0 ? 'up' : (v<0 ? 'down' : '');
+const pnlTxt = v => (v>0?'+':'') + fmt(v);
+const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- 组合切换 ----------
+function initComboSel(){
+  const sel = document.getElementById('comboSel');
+  COMBOS.forEach(c=>{
+    const o = document.createElement('option');
+    o.value = c; o.textContent = (AA[c].name||c);
+    sel.appendChild(o);
+  });
+  sel.value = combo;
+  sel.onchange = e=>{ combo = e.target.value; history.replaceState(null,'','?combo='+combo); page=1; render(); };
+}
+
+// ---------- 通用 SVG 图表 ----------
+function svgLine(dates, values, w=700, h=220, color=BLUE){
+  if(!values || values.length<2) return '<div class="empty">暂无数据</div>';
+  const n = values.length;
+  let min = Math.min(...values), max = Math.max(...values);
+  if(max-min < 1e-9){ max += 1; min -= 1; }
+  const pad = 10;
+  const X = i => pad + i*(w-2*pad)/(n-1);
+  const Y = v => h-pad - (v-min)*(h-2*pad)/(max-min);
+  let path = '', area = '';
+  values.forEach((v,i)=>{ path += (i?'L':'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); area += (i?'L':'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); });
+  area += 'L' + X(n-1).toFixed(1) + ',' + (h-pad) + 'L' + X(0).toFixed(1) + ',' + (h-pad) + 'Z';
+  const gid = 'g' + Math.random().toString(36).slice(2,8);
+  const last = values[n-1], first = values[0];
+  const lastUp = last >= first;
+  return `<svg viewBox="0 0 ${w} ${h}">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.18"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    ${[0.25,0.5,0.75].map(f=>`<line x1="${pad}" x2="${w-pad}" y1="${(h-2*pad)*f+pad}" y2="${(h-2*pad)*f+pad}" stroke="#eef1f5"/>`).join('')}
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.8"/>
+    <circle cx="${X(n-1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="3.5" fill="${color}"/>
+    <text x="${w-pad}" y="${Y(last)-8}" text-anchor="end" font-size="11" fill="${color}" font-weight="600">${fmt(last,2)}</text>
+    <text x="${pad}" y="${h-3}" font-size="10" fill="#8b949e">${dates[0]||''}</text>
+    <text x="${w-pad}" y="${h-3}" text-anchor="end" font-size="10" fill="#8b949e">${dates[n-1]||''}</text>
+  </svg>`;
+}
+function svgBars(items, w=700, h=240){
+  if(!items || !items.length) return '<div class="empty">暂无数据</div>';
+  const n = items.length, bw = Math.min(34, (w-40)/n*0.7), gap = Math.min(14, (w-40)/n*0.3);
+  let max = Math.max(...items.map(i=>Math.abs(i.v)));
+  if(max<=0) max=1;
+  let out = '';
+  items.forEach((it,i)=>{
+    const x = 20 + i*((w-40)/n);
+    const bh = Math.abs(it.v)/max * (h-50);
+    const y = it.v>=0 ? h-30-bh : h-30;
+    out += `<rect x="${x+(gap/2)}" y="${y}" width="${bw}" height="${bh}" fill="${it.v>=0?UP:DOWN}" rx="2" opacity="0.85">
+      <title>${it.k}：${fmt(it.v)}</title></rect>`;
+  });
+  const topN = items.slice(0, Math.min(12, n));
+  return `<svg viewBox="0 0 ${w} ${h}">
+    <line x1="10" x2="${w-10}" y1="${h-30}" y2="${h-30}" stroke="#d0d7de"/>
+    ${out}
+    ${topN.map((it,i)=>{ const x=20+i*((w-40)/n)+gap/2; return `<text x="${x+bw/2}" y="${h-12}" text-anchor="middle" font-size="9" fill="#8b949e" transform="rotate(-35 ${x+bw/2} ${h-12})">${it.k}</text>`;}).join('')}
+    <text x="${w-10}" y="10" text-anchor="end" font-size="11" fill="#8b949e">单位：元</text>
+  </svg>`;
+}
+function svgHBar(items, w=700, h){
+  if(!items || !items.length) return '<div class="empty">暂无数据</div>';
+  const n = items.length, rowH = 24;
+  h = h || (n*rowH + 30);
+  let max = Math.max(...items.map(i=>Math.abs(i.v)));
+  if(max<=0) max=1;
+  let out = '';
+  items.forEach((it,i)=>{
+    const y = 14 + i*rowH;
+    const bw = Math.abs(it.v)/max * (w-160);
+    const x = it.v>=0 ? w/2 : w/2 - bw;
+    out += `<rect x="${x}" y="${y+2}" width="${Math.max(bw,2)}" height="16" fill="${it.v>=0?UP:DOWN}" opacity="0.85" rx="2">
+      <title>${it.k}：${fmt(it.v)}</title></rect>
+      <text x="${w/2-6}" y="${y+14}" text-anchor="end" font-size="11" fill="#57606a">${esc(it.k)}</text>
+      <text x="${w/2+8}" y="${y+14}" font-size="11" fill="${it.v>=0?UP:DOWN}" font-weight="600">${pnlTxt(it.v)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}"><line x1="${w/2}" x2="${w/2}" y1="6" y2="${h-8}" stroke="#d0d7de"/>${out}</svg>`;
+}
+
+// ---------- 各 Tab 渲染 ----------
+function render(){
+  const D = AA[combo]; if(!D){ return; }
+  renderInfoBar(D);
+  document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===mainTab));
+  const el = document.getElementById('mainContent');
+  if(mainTab==='overview') el.innerHTML = rOverview(D);
+  else if(mainTab==='profile') el.innerHTML = rProfile(D);
+  else if(mainTab==='profit') el.innerHTML = rProfit(D);
+  else if(mainTab==='variety') el.innerHTML = rVariety(D);
+  else if(mainTab==='risk') el.innerHTML = rRisk(D);
+  else el.innerHTML = rPositions(D);
+}
+function renderInfoBar(D){
+  const acct = D.sim.account||{};
+  const b = acct.balance, m = acct.margin;
+  const risk = b ? (m/b*100) : null;
+  const pf = PF[combo]||{};
+  document.getElementById('infoBar').innerHTML = `
+    <h1>${esc(D.name)}</h1>
+    <span class="tag mode">${D.mode}</span>
+    <span class="tag">成员 ${D.members.length} 人</span>
+    <span class="tag">年化 ${pct(D.metrics.annual_return)}</span>
+    <span class="tag">回撤 ${pct(D.metrics.max_drawdown)}</span>
+    <span class="tag up">Calmar ${fmt(D.metrics.return_dd_ratio,2)}</span>
+    <div class="right">模拟资金 3000万 · 数据日 ${(D.sim.settle||{}).settle_date||'—'}<br>权益 ${wan(b)}万 · 风险度 ${risk===null?'—':risk.toFixed(1)+'%'}</div>`;
+}
+function rOverview(D){
+  const acct = D.sim.account||{};
+  const b = acct.balance, avail = acct.available, m = acct.margin;
+  const fp = acct.float_profit||0, risk = b ? (m/b*100) : null;
+  const pf = PF[combo]||{};
+  const nd = pf.nav_dates||[], nv = pf.nav_values||[];
+  const cards = [
+    ['动态权益', wan(b)+' 万', ''],
+    ['可用资金', wan(avail)+' 万', ''],
+    ['占用保证金', wan(m)+' 万', risk!==null ? '风险度 '+risk.toFixed(1)+'%' : ''],
+    ['浮动盈亏', pnlTxt(fp), fp!==0 ? '今日持仓盈亏' : ''],
+    ['累计净值', fmt(nv[nv.length-1],4)||'—', (pf.metrics||{}).total_return!==undefined ? '累计收益 '+pct((pf.metrics||{}).total_return) : ''],
+  ];
+  const ma = D.market_adaptation||{};
+  const st = D.stress_test||{};
+  const perf = [
+    ['年化收益率', pct(D.metrics.annual_return)],
+    ['最大回撤', pct(D.metrics.max_drawdown)],
+    ['收益回撤比', fmt(D.metrics.return_dd_ratio,2)],
+    ['夏普比率', fmt(D.metrics.sharpe,2)],
+    ['胜率', pct(D.metrics.win_rate)],
+    ['年化波动', pct(D.metrics.annual_volatility)],
+  ];
+  const mapTxt = (k)=> `牛${fmt(ma.up,0)} / 熊${fmt(ma.down,0)} / 震荡${fmt(ma.high,0)} / 急跌${fmt(ma.crash,0)}`;
+  const memberHtml = D.members.map(m=>`
+    <div class="member-card">
+      <div class="nm">${esc(m.name)} <span class="muted" style="font-size:11px">#${m.id}</span></div>
+      <div class="tg">${esc((m.tags||[]).join(' · ')||m.strategy||'—')}</div>
+      <div class="kv2"><span>权重 ${fmt(m.weight,1)}%</span><span>收益 ${fmt(m.yield,1)}%</span></div>
+      <div class="kv2"><span>回撤 ${fmt(m.drawdown,1)}%</span><span>胜率 ${fmt(m.win_rate,1)}%</span></div>
+    </div>`).join('');
+  return `
+  <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value ${c[1].startsWith('+')||c[1].startsWith('-')?'':''}">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
+  <div class="cols">
+    <div class="panel"><h3>组合净值曲线 <span class="hint">${nd[0]||''} ~ ${nd[nd.length-1]||''}</span></h3>${svgLine(nd, nv)}</div>
+    <div class="panel"><h3>核心业绩指标</h3>
+      <div class="kv">${perf.map(p=>`<div class="row"><span class="k">${p[0]}</span><span class="v">${p[1]}</span></div>`).join('')}</div>
+      <div class="mini-legend" style="margin-top:12px">
+        <span>📈 行情适配：${mapTxt()}</span>
+      </div>
+      <div class="mini-legend">
+        <span>VaR95 <b class="down">${pct(st.var95)}</b></span>
+        <span>CVaR95 <b class="down">${pct(st.cvar95)}</b></span>
+        <span>最大日亏 <b class="down">${pct(st.max_daily_loss)}</b></span>
+      </div>
+    </div>
+  </div>
+  <div class="panel"><h3>组合成员（${D.members.length} 人）</h3>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${memberHtml}</div>
+  </div>`;
+}
+function rProfile(D){
+  const ts = D.profile.trading_stats||{};
+  const ta = D.profile.trading_analysis||{};
+  const fe = D.pnl.features||{};
+  const statsItems = [
+    ['综合积分', fmt(ts.credit,1)], ['参考年化', pct(ts.annual_return)],
+    ['累计收益', pct(ts.total_return)], ['累计净值', fmt(ts.total_nav,4)],
+    ['最大回撤', pct(ts.max_drawdown)], ['收益回撤比', fmt(ts.return_dd_ratio,2)],
+    ['累计手续费', fmt(ts.commission)+' 元'], ['成立日期', ts.start_date||'—'],
+    ['最新数据日', ts.end_date||'—'], ['净值天数', fmt(ts.trade_days)],
+  ];
+  const analysisItems = [
+    ['盈利天数', fmt(ta.win_days)], ['亏损天数', fmt(ta.lose_days)],
+    ['胜率', pct(ta.win_rate)], ['夏普比率', fmt(ta.sharpe,2)],
+    ['年化波动', pct(ta.annual_volatility)], ['最大日亏', pct(ta.max_daily_loss)],
+    ['VaR95', pct(ta.var95)], ['VaR99', pct(ta.var99)],
+    ['动态权益', wan(ta.balance)+' 万'], ['占用保证金', wan(ta.margin)+' 万'],
+    ['风险度', ta.risk_ratio!==null?Number(ta.risk_ratio).toFixed(1)+'%':'—'],
+  ];
+  const features = [
+    ['日内', fe.intraday], ['隔夜', fe.overnight], ['短趋势', fe.short_trend],
+    ['长趋势', fe.long_trend], ['套利/对冲', fe.arb],
+  ];
+  return `
+  <div class="cols">
+    <div class="panel"><h3>交易统计</h3><div class="kv">${statsItems.map(i=>`<div class="row"><span class="k">${i[0]}</span><span class="v">${i[1]}</span></div>`).join('')}</div></div>
+    <div class="panel"><h3>交易分析</h3><div class="kv">${analysisItems.map(i=>`<div class="row"><span class="k">${i[0]}</span><span class="v">${i[1]}</span></div>`).join('')}</div></div>
+  </div>
+  <div class="panel"><h3>交易特征 <span class="hint">基于成员历史平仓 ${fmt(D.pnl.stats.total_trades)} 笔</span></h3>
+    ${features.map(f=>{ const v=f[1]||0; return `<div class="feature-row">
+      <span class="fk">${f[0]}</span>
+      <div class="bar-bg" style="flex:1"><div class="bar-fill" style="width:${Math.min(v,100)}%;background:${BLUE}"></div></div>
+      <span class="fv">${v}%</span></div>`;}).join('')}
+    <div class="mini-legend"><span>程序化/手工等细分需逐笔模型，当前按持仓周期近似统计</span></div>
+  </div>`;
+}
+function rProfit(D){
+  const s = D.pnl.stats||{};
+  const monthly = (D.pnl.monthly||[]).map(m=>({k:m.month.slice(5)+'月', v:m.pnl}));
+  const topW = D.pnl.top_wins||[], topL = D.pnl.top_losses||[];
+  const cards = [
+    ['平仓总笔数', fmt(s.total_trades), ''],
+    ['盈利笔数', fmt(s.win_trades), '胜率 '+pct(s.win_rate)],
+    ['累计平仓盈亏', pnlTxt(wan(s.gross_pnl))+' 万', '成员历史累计'],
+    ['盈亏比', fmt(s.win_trades/Math.max(s.total_trades-s.win_trades,1),2), '盈/亏笔数比'],
+  ];
+  const winTable = topW.map(t=>`<tr><td>${t.date}</td><td>${esc(t.contract)}</td><td class="up">+${fmt(wan(t.pnl),1)} 万</td></tr>`).join('');
+  const lossTable = topL.map(t=>`<tr><td>${t.date}</td><td>${esc(t.contract)}</td><td class="down">${fmt(wan(t.pnl),1)} 万</td></tr>`).join('');
+  return `
+  <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
+  <div class="panel"><h3>月度盈亏分布（成员历史平仓，单位：万元）</h3>${svgBars(monthly.map(m=>({...m, v: wan(m.v,0)})), 720, 260)}</div>
+  <div class="cols">
+    <div class="panel"><h3>单笔盈利 Top 10</h3>
+      <table><tr><th>平仓日</th><th>合约</th><th>盈亏</th></tr>${winTable||'<tr><td colspan="3" class="empty">暂无</td></tr>'}</table></div>
+    <div class="panel"><h3>单笔亏损 Top 10</h3>
+      <table><tr><th>平仓日</th><th>合约</th><th>盈亏</th></tr>${lossTable||'<tr><td colspan="3" class="empty">暂无</td></tr>'}</table></div>
+  </div>`;
+}
+function rVariety(D){
+  const vs = D.pnl.variety||[];
+  const total = Math.abs(vs.reduce((a,x)=>a+x.pnl,0))||1;
+  const top1 = vs[0], topNeg = vs.filter(v=>v.pnl<0)[0];
+  const cards = [
+    ['覆盖品种', fmt(vs.length), ''],
+    ['盈利品种', fmt(vs.filter(v=>v.pnl>0).length), '占比 '+pct(vs.filter(v=>v.pnl>0).length/Math.max(vs.length,1)*100)],
+    ['最大贡献', top1? esc(top1.name||top1.code)+' '+pnlTxt(wan(top1.pnl,0))+'万' : '—', ''],
+    ['最大拖累', topNeg? esc(topNeg.name||topNeg.code)+' '+fmt(wan(topNeg.pnl,0),0)+'万' : '—', ''],
+  ];
+  const rows = vs.map(v=>{
+    const share = Math.abs(v.pnl)/total*100;
+    return `<tr><td>${esc(v.name||v.code)}</td><td>${esc(v.code)}</td><td>${fmt(v.cnt)}</td>
+      <td class="${pnlCls(v.pnl)}">${pnlTxt(wan(v.pnl,1))} 万</td>
+      <td><div class="bar-bg" style="width:120px"><div class="bar-fill" style="width:${Math.min(share,100)}%;background:${v.pnl>=0?UP:DOWN}"></div></div></td>
+      <td class="muted">${share.toFixed(1)}%</td></tr>`;
+  }).join('');
+  return `
+  <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:16px">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
+  <div class="panel"><h3>品种盈亏贡献（成员历史平仓，单位：万元）</h3>${svgHBar(vs.slice(0,20).map(v=>({k:(v.name||v.code), v: wan(v.pnl,0)})), 720)}</div>
+  <div class="panel"><h3>品种明细</h3>
+    <table><tr><th>品种</th><th>代码</th><th>平仓笔数</th><th>盈亏(万)</th><th>占比</th><th>贡献权重</th></tr>${rows}</table>
+    <div class="mini-legend"><span>数据按成员平仓记录的 fprofit 聚合，红=盈利 绿=亏损</span></div>
+  </div>`;
+}
+function rRisk(D){
+  const pf = PF[combo]||{};
+  const dd = pf.drawdown_values||[];
+  const nd = pf.nav_dates||[];
+  const m = D.metrics||{}, st = D.stress_test||{};
+  const cards = [
+    ['最大回撤', pct(m.max_drawdown), ''],
+    ['夏普比率', fmt(m.sharpe,2), ''],
+    ['收益回撤比', fmt(m.return_dd_ratio,2), ''],
+    ['年化波动', pct(m.annual_volatility), ''],
+    ['VaR95', pct(st.var95), '日度'],
+  ];
+  const rows = [
+    ['VaR 95%', pct(st.var95), '历史模拟，日收益分布分位'],
+    ['VaR 99%', pct(st.var99), '极端损失分位'],
+    ['CVaR 95%', pct(st.cvar95), '损失超过 VaR95 的平均损失'],
+    ['CVaR 99%', pct(st.cvar99), '损失超过 VaR99 的平均损失'],
+    ['最大日亏损', pct(st.max_daily_loss), '历史最大单日回撤'],
+    ['胜率', pct(m.win_rate), '日收益为正的天数占比'],
+  ];
+  return `
+  <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
+  <div class="panel"><h3>动态回撤曲线 <span class="hint">净值回撤（%）</span></h3>${svgLine(nd, dd.map(v=>-Math.abs(v||0)), 720, 240, DOWN)}</div>
+  <div class="panel"><h3>风险指标明细</h3>
+    <table><tr><th>指标</th><th>数值</th><th>说明</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td class="down">${r[1]}</td><td class="muted">${r[2]}</td></tr>`).join('')}</table>
+  </div>`;
+}
+
+// ---------- 持仓分析（7 子 Tab） ----------
+function rPositions(D){
+  const sim = D.sim||{};
+  const subtabs = [
+    ['trades','成交明细'],['pos','持仓汇总'],['posdetail','持仓明细'],
+    ['close','平仓明细'],['deposit','出入金明细'],['opt','期权成交'],['optpos','期权持仓'],
+  ];
+  let body = '';
+  if(subTab==='trades') body = rSubTrades(sim);
+  else if(subTab==='pos') body = rSubPos(sim, true);
+  else if(subTab==='posdetail') body = rSubPos(sim, false);
+  else if(subTab==='close') body = rSubClose(sim);
+  else body = rSubEmpty(subTab);
+  return `
+  <div class="subtabs">${subtabs.map(s=>`<button class="subtab ${s[0]===subTab?'active':''}" data-sub="${s[0]}">${s[1]}</button>`).join('')}</div>
+  ${body}`;
+}
+function rSubTrades(sim){
+  const trades = sim.trades||[];
+  // 默认最近 30 天
+  const cutoff = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
+  const dayOf = t => (t.tstr||'').slice(0,10) || (t.trade_date_time||'').toString().slice(0,10);
+  const filtered = trades.filter(t => !dayOf(t) || dayOf(t) >= cutoff);
+  const total = filtered.length, pages = Math.max(1, Math.ceil(total/pageSize));
+  if(page>pages) page = pages;
+  const list = filtered.slice((page-1)*pageSize, page*pageSize);
+  const rows = list.map(t=>{
+    const sym = t.symbol||'';
+    const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(sym.split('.').pop()||'');
+    return `<tr>
+      <td>${dayOf(t)||'—'} ${t.tstr||''}</td>
+      <td>${esc(sym)}</td>
+      <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
+      <td>${t.offset==='OPEN'?'开':'平'}</td>
+      <td>${fmt(t.volume)}</td>
+      <td>${fmt(t.price,2)}</td>
+      <td>${fmt((t.volume||0)*(t.price||0)*(t.volume_multiple||1)/1e4,1)} 万</td>
+      <td>${fmt(t.commission,1)}</td></tr>`;
+  }).join('');
+  const filterHtml = `
+    <div class="filterbar">
+      <span>默认显示最近 30 天成交，共 <b>${fmt(total)}</b> 笔</span>
+      <span class="muted">（本组合模拟账户自身成交，与成员/母账户无关）</span>
+    </div>
+    <table><tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>成交价</th><th>成交额(万)</th><th>手续费</th></tr>
+    ${rows||'<tr><td colspan="8" class="empty">暂无成交记录</td></tr>'}</table>
+    <div class="pager"><span>共 ${pages} 页 / ${fmt(total)} 笔</span>
+      <button ${page<=1?'disabled':''} onclick="changePage(-1)">上一页</button>
+      <button ${page>=pages?'disabled':''} onclick="changePage(1)">下一页</button></div>`;
+  return filterHtml;
+}
+function rSubPos(sim, summary){
+  const pos = sim.positions||[];
+  const rows = pos.map(p=>{
+    const sym = p.symbol||'';
+    const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(sym.split('.').pop()||'');
+    if(isOpt) return '';
+    const side = (p.long||0)>(p.short||0) ? '多' : ((p.short||0)>(p.long||0) ? '空' : '—');
+    return `<tr>
+      <td>${esc(sym)}</td>
+      <td class="up">${fmt(p.long)}</td><td class="down">${fmt(p.short)}</td>
+      <td>${side}</td>
+      <td>${fmt(p.last,2)}</td>
+      <td class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))} 万</td>
+      <td>${fmt(wan(p.margin,0),0)} 万</td></tr>`;
+  }).filter(Boolean).join('');
+  const sumRows = () => {
+    const bySym = {};
+    pos.forEach(p=>{
+      const key = p.symbol||'';
+      const isOpt = /^[A-Za-z]+\d+[cCpP]\d*$/.test(key.split('.').pop()||'');
+      if(isOpt) return;
+      bySym[key] = bySym[key] || {long:0, short:0, profit:0, margin:0, last:p.last};
+      bySym[key].long += p.long||0; bySym[key].short += p.short||0;
+      bySym[key].profit += p.profit||0; bySym[key].margin += p.margin||0;
+    });
+    return Object.entries(bySym).map(([sym,s])=>{
+      const side = s.long>s.short?'多':(s.short>s.long?'空':'—');
+      return `<tr><td>${esc(sym)}</td><td class="up">${fmt(s.long)}</td><td class="down">${fmt(s.short)}</td>
+        <td>${side}</td><td>${fmt(s.last,2)}</td>
+        <td class="${pnlCls(s.profit)}">${pnlTxt(wan(s.profit,1))} 万</td>
+        <td>${fmt(wan(s.margin,0),0)} 万</td></tr>`;
+    }).join('');
+  };
+  const body = summary ? sumRows() : rows;
+  const head = `<table><tr><th>合约</th><th>多单</th><th>空单</th><th>方向</th><th>最新价</th><th>浮动盈亏</th><th>保证金(万)</th></tr>
+    ${body||'<tr><td colspan="7" class="empty">当前无持仓</td></tr>'}</table>`;
+  const note = summary ? '<div class="mini-legend"><span>按合约汇总（同一合约多空净额合并）</span></div>' : '<div class="mini-legend"><span>按账户逐条持仓明细展示</span></div>';
+  return `<div class="filterbar"><span>共 <b>${fmt(pos.length)}</b> 条持仓</span></div>${head}${note}`;
+}
+function rSubClose(sim){
+  const closes = sim.close_trades||[];
+  const rows = closes.map(c=>`<tr>
+    <td>${c.day||'—'}</td><td>${esc(c.symbol)}</td>
+    <td class="${c.direction==='BUY'?'up':'down'}">${c.direction==='BUY'?'买':'卖'}</td>
+    <td>${fmt(c.volume)}</td><td>${fmt(c.open_price,2)}</td><td>${fmt(c.close_price,2)}</td>
+    <td class="${pnlCls(c.profit)}">${pnlTxt(wan(c.profit,1))} 万</td>
+    <td>${fmt(c.commission,1)}</td></tr>`).join('');
+  return `<div class="filterbar"><span>共 <b>${fmt(closes.length)}</b> 笔平仓记录</span></div>
+    <table><tr><th>日期</th><th>合约</th><th>方向</th><th>手数</th><th>开仓价</th><th>平仓价</th><th>盈亏(万)</th><th>手续费</th></tr>
+    ${rows||'<tr><td colspan="8" class="empty">暂无平仓记录（每日 15:30 结算后更新）</td></tr>'}</table>`;
+}
+function rSubEmpty(tab){
+  const map = {deposit:'出入金明细', opt:'期权成交', optpos:'期权持仓'};
+  const hint = {deposit:'本组合模拟账户目前无出入金记录（初始 3000 万，浮盈亏在账内流转）',
+    opt:'组合以商品期货为主，暂无期权成交记录', optpos:'组合以商品期货为主，暂无期权持仓记录'};
+  return `<div class="panel"><h3>${map[tab]}</h3><div class="empty">${hint[tab]||'暂无数据'}</div></div>`;
+}
+function changePage(d){
+  page += d; if(page<1) page=1;
+  render();
+}
+
+// ---------- 事件绑定 ----------
+document.getElementById('mainTabs').addEventListener('click', e=>{
+  const t = e.target.closest('.tab'); if(!t) return;
+  mainTab = t.dataset.tab; page = 1; render();
+});
+document.getElementById('mainContent').addEventListener('click', e=>{
+  const t = e.target.closest('.subtab'); if(!t) return;
+  subTab = t.dataset.sub; page = 1; render();
+});
+
+initComboSel();
+render();
+</script>
+</body>
+</html>
