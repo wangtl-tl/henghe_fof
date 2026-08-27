@@ -129,6 +129,7 @@ svg{display:block;width:100%;height:auto}
     <button class="tab" data-tab="variety">品种分析</button>
     <button class="tab" data-tab="risk">风控能力</button>
     <button class="tab" data-tab="positions">持仓分析</button>
+    <button class="tab" data-tab="history">历史数据</button>
   </div>
   <div id="mainContent"></div>
   <div class="footer">数据来源：衡合FOF跟投系统 · 模拟账户数据与本组合独立采集 · 仅供内部参考，不构成投资建议</div>
@@ -298,6 +299,7 @@ function render(){
   else if(mainTab==='profit') el.innerHTML = rProfit(S);
   else if(mainTab==='variety') el.innerHTML = rVariety(S);
   else if(mainTab==='risk') el.innerHTML = rRisk(S);
+  else if(mainTab==='history') el.innerHTML = rHistory(S);
   else el.innerHTML = rPositions(S);
 }
 function renderInfoBar(D){
@@ -603,6 +605,15 @@ function rPositions(D){
         ${tradeRows||'<tr><td colspan="7" class="empty">暂无成交</td></tr>'}</table></div>
     </div>
   </div>
+  <div class="panel" style="margin-top:12px"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）</span></h3>${line}
+    <div class="live-status" style="margin-top:6px">
+      <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
+      <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
+      <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
+      <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
+      <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
+    </div>
+  </div>
   <div class="panel" style="margin-top:12px"><h3>系统日志 <span class="hint">核准/调仓/成交（最近 50 条）</span></h3>
     <div class="log-box">${logs||'<div>暂无日志</div>'}</div>
     <div class="details-toggle" onclick="this.nextElementSibling.classList.toggle('open')">▾ 详细数据（平仓明细/出入金/期权）</div>
@@ -639,6 +650,51 @@ function rDetails(sim){
   </table>
   <div style="margin-top:14px"><b>期权持仓/成交</b></div>
   <div class="empty">${hasOpts?'包含期权合约（如有）':'本组合以商品期货为主，暂无期权持仓/成交'}</div>`;
+}
+// ---------- 历史数据 Tab（每日结算单列表，参考原网站原始数据） ----------
+let histPage = 1, histSize = 50;
+function rHistory(D){
+  const list = (D.sim && D.sim.settlements) || [];
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total/histSize));
+  if(histPage > pages) histPage = pages;
+  const pageList = list.slice((histPage-1)*histSize, histPage*histSize);
+  // 列：日期 | 账户权益 | 上日结存 | 当日结存 | 当日入金 | 当日出金 | 逐日盈亏 | 保证金占用 | 手续费 | 可用资金 | 风险度
+  const rows = pageList.map(s=>{
+    const dPnl = (s.balance||0) - (s.open_balance||0);  // 逐日盈亏 = 结算权益 - 上日结存
+    return `<tr>
+      <td>${esc(s.settle_date||'—')}</td>
+      <td>${fmt(s.balance,0)}</td>
+      <td>${fmt(s.open_balance,0)}</td>
+      <td>${fmt(s.balance,0)}</td>
+      <td>0</td>
+      <td>0</td>
+      <td class="${pnlCls(dPnl)}">${pnlTxt(dPnl)}</td>
+      <td>${fmt(s.margin,0)}</td>
+      <td>${fmt(s.day_commission,1)}</td>
+      <td>${fmt(s.available,0)}</td>
+      <td>${s.risk_ratio!==null&&s.risk_ratio!==undefined?Number(s.risk_ratio).toFixed(2)+'%':'—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="panel"><h3>历史数据 <span class="hint">每日结算单 · 来源：monitor_db settlements</span></h3>
+    <div class="filterbar">
+      <span>共 <b>${fmt(total)}</b> 条结算记录 · 每页 ${histSize} 条</span>
+      <span class="muted">逐日盈亏 = 账户权益 − 上日结存（已扣除手续费）</span>
+    </div>
+    <div class="trade-table-wrap" style="max-height:none"><table>
+      <tr><th>日期</th><th>账户权益</th><th>上日结存</th><th>当日结存</th><th>当日入金</th><th>当日出金</th><th>逐日盈亏</th><th>保证金占用</th><th>手续费</th><th>可用资金</th><th>风险度</th></tr>
+      ${rows||'<tr><td colspan="11" class="empty">暂无结算记录（每日 15:30 生成）</td></tr>'}</table></div>
+    <div class="pager">
+      <span>第 ${histPage} / ${pages} 页 · 共 ${fmt(total)} 条</span>
+      <button ${histPage<=1?'disabled':''} onclick="changeHistPage(-1)">上一页</button>
+      <button ${histPage>=pages?'disabled':''} onclick="changeHistPage(1)">下一页</button>
+    </div>
+  </div>`;
+}
+function changeHistPage(d){
+  histPage += d; if(histPage<1) histPage=1;
+  render();
 }
 function svgSimLine(ts, vals){
   if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
