@@ -292,6 +292,7 @@ let LIVE = null;    // {combo: state}
 let READY = null;   // 数据就绪
 let LIVE_NAV = {};  // {combo: nav曲线}
 let ACTIONS = null; // {combo: 盘前动作计划}
+let POLL = null;    // 跟投数据轮询状态（19:30 起每 15 分钟）
 async function tryLive(){
   try{
     const r = await fetch('http://127.0.0.1:18081/api/state?_='+Date.now(), {cache:'no-store'});
@@ -309,6 +310,10 @@ async function tryLive(){
     const r4 = await fetch('http://127.0.0.1:18081/api/actions?_='+Date.now(), {cache:'no-store'});
     if(r4.ok) ACTIONS = await r4.json();
   }catch(e){ ACTIONS = null; }
+  try{
+    const r5 = await fetch('http://127.0.0.1:18081/api/poll?_='+Date.now(), {cache:'no-store'});
+    if(r5.ok) POLL = await r5.json();
+  }catch(e){ POLL = null; }
   render();
 }
 function liveSim(D){
@@ -336,19 +341,20 @@ function segLabel(){
 function readinessHtml(){
   let summary;
   if(!READY){
-    summary = '<span class="muted-note">数据就绪：今日尚未运行检查（每日 19:30 首查 / 20:15 终查）</span>';
+    summary = '<span class="muted-note">数据就绪：19:30 起每 15 分钟轮询抓取，直到全部盘手取到 · 企微群同步汇报</span>';
   } else if(READY.ready===true || READY.missing_count===0){
     const n = READY.total_traders||READY.trader_count||'';
     summary = '<span class="ok">✅ 数据全部就绪</span><span class="muted-note">'+esc(n)+' 位成员数据已获取 · 20:30 全量核准</span>';
   } else {
     const names = (READY.missing||[]).slice(0,4).map(x=>esc(x.name||x.aid)).join('、');
-    summary = '<span class="bad">⚠️ '+esc(READY.missing_count)+' 位成员未就绪</span><span class="muted-note">'+(names?names+' …':'')+'</span>';
+    const pollTxt = POLL ? ` · 轮询第 ${esc(POLL.round||POLL.round_no||'')} 轮 · 已取 ${POLL.ready||0}/${POLL.total||0}` : '';
+    summary = '<span class="bad">⚠️ '+esc(READY.missing_count)+' 位成员未就绪</span><span class="muted-note">'+(names?names+' …':'')+pollTxt+'</span>';
   }
   return summary + '<span style="flex:1"></span><span class="muted-note" style="cursor:pointer;user-select:none">▾ 明细</span>' + readyDetailHtml();
 }
 // 就绪明细面板：已取到/未取到名单（点击📡条展开）
 function readyDetailHtml(){
-  if(!READY) return '<div class="ready-detail" id="ready-detail"><div class="empty" style="padding:8px">尚未运行数据就绪检查</div></div>';
+  if(!READY) return '<div class="ready-detail" id="ready-detail"><div class="empty" style="padding:8px">尚未运行数据就绪检查（19:30 起每 15 分钟轮询，直到全部取到）</div></div>';
   const total = READY.total_traders||READY.trader_count||0;
   const missing = READY.missing||[];
   const missCnt = READY.missing_count!==undefined ? READY.missing_count : missing.length;
@@ -379,7 +385,7 @@ function toggleReadyDetail(){
   const el = document.getElementById('ready-detail');
   if(el) el.classList.toggle('open');
 }
-// 数据日高亮卡：数据日 + 取数状态 + 进度条 + 倒计时
+// 数据日高亮卡：数据日 + 取数状态 + 进度条 + 轮询倒计时
 function dataDayCard(){
   const settle = (AA[combo]&&AA[combo].sim&&AA[combo].sim.settle)||{};
   const day = (READY&&READY.date) || settle.settle_date || new Date().toISOString().slice(0,10);
@@ -389,20 +395,21 @@ function dataDayCard(){
   const miss = (READY&&(READY.missing_count!==undefined?READY.missing_count:(READY.missing||[]).length))||0;
   const got = Math.max(total-miss,0);
   const pct = total?Math.round(got/total*100):0;
+  const done = !!(POLL&&POLL.done);
   let stTxt, stCls;
   if(!READY){ stTxt='未运行检查'; stCls='var(--weak)'; }
-  else if(READY.ready===true||miss===0){ stTxt='✅ 全部就绪 '+got+'/'+total; stCls='var(--down)'; }
+  else if(READY.ready===true||miss===0||done){ stTxt='✅ 全部就绪 '+got+'/'+total; stCls='var(--down)'; }
   else { stTxt='⚠️ '+miss+' 人未取到'; stCls='var(--up)'; }
-  const chkAt = (READY&&READY.checked_at)?' · 触发 '+esc(READY.checked_at):'';
+  const chkAt = (POLL&&POLL.checked_at)?' · 第 '+(POLL.round||POLL.round_no||'?')+' 轮 '+esc(POLL.checked_at):'';
   const liveTag = LIVE?'实时':'快照';
   return `<div class="data-day-card">
     <div class="dd-item"><span class="dd-label">📅 数据日</span><span class="dd-value">${esc(day)}<span style="font-size:12px;color:var(--weak)"> ${esc(wd)}</span></span></div>
-    <div class="dd-item"><span class="dd-label">📡 取数状态（${liveTag}）</span><span class="dd-value sm" style="color:${stCls}">${stTxt}${chkAt}</span></div>
+    <div class="dd-item"><span class="dd-label">📡 轮询状态（${liveTag} · 每15分钟）</span><span class="dd-value sm" style="color:${stCls}">${stTxt}${chkAt}</span></div>
     <div class="dd-progress">
       <div class="dd-txt"><span>取数进度</span><span class="dd-count">${got} / ${total||'—'} · ${pct}%</span></div>
       <div class="dd-bar"><div class="dd-fill" style="width:${pct}%;background:${total&&miss?(pct>=100?'var(--down)':'#ba7517'):'var(--blue)'}"></div></div>
     </div>
-    <div class="dd-item"><span class="dd-label">⏰ 下次拉取</span><span class="dd-value sm"><span id="dd-count">计算中…</span></span></div>
+    <div class="dd-item"><span class="dd-label">⏰ 下次轮询</span><span class="dd-value sm"><span id="dd-count">计算中…</span></span></div>
   </div>`;
 }
 // 倒计时秒级更新（只改 dd-count 元素，不整页 render）
@@ -412,14 +419,25 @@ function updateCountdown(){
   const now = new Date();
   const mk = (h,m)=>{ const t=new Date(); t.setHours(h,m,0,0); return t; };
   let next=null, label='';
-  if(now < mk(19,30)){ next=mk(19,30); label='19:30 首查'; }
-  else if(now < mk(20,15)){ next=mk(20,15); label='20:15 终查'; }
-  else if(now < mk(20,30)){ next=mk(20,30); label='20:30 核准'; }
-  else { next=mk(9,0); next.setDate(next.getDate()+1); label='次日 09:00 撮合'; }
+  const done = !!(POLL&&POLL.done);
+  if(now < mk(19,30)){ next=mk(19,30); label='19:30 轮询开始'; }
+  else if(now < mk(20,30)){
+    if(done){ next=mk(20,30); label='已全部取到 · 20:30 核准'; }
+    else{
+      // 距下一 15 分钟轮询点
+      const base = mk(19,30);
+      const mins = Math.floor((now - base)/60000);
+      const nextMins = (Math.floor(mins/15)+1)*15;
+      next = new Date(base.getTime() + nextMins*60000);
+      label = '下次轮询（每 15 分钟）';
+    }
+  }
+  else if(now < mk(21,0)){ next=mk(21,0); label='20:30 已核准 · 21:00 开盘执行'; }
+  else { next=mk(9,0); next.setDate(next.getDate()+1); label='夜盘执行中 · 次日 09:00 撮合'; }
   const s = Math.max(0, Math.floor((next-now)/1000));
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
   const pad = n=>String(n).padStart(2,'0');
-  el.textContent = label+' · 倒计时 '+h+'h '+pad(m)+'m '+pad(ss)+'s';
+  el.textContent = label+' · '+h+'h '+pad(m)+'m '+pad(ss)+'s';
 }
 // 仅持仓对齐 tab 激活时显示倒计时（持仓分析不再用数据日卡）
 setInterval(()=>{ if(mainTab==='align') updateCountdown(); }, 1000);
@@ -536,7 +554,7 @@ function rOverview(D){
   </div>
   <div class="panel"><h3>📋 每日持仓对齐 <span class="hint">实际持仓 / 目标 · 最近核准</span></h3>
     <table><tr><th>组合</th><th>持仓/目标</th><th>最近核准</th></tr>${alignRows}</table>
-    <div class="mini-legend"><span>每日 20:15 抓取当日结算 → 20:30 全量核准一次；无夜盘品种次日 09:00 自动撮合</span></div>
+    <div class="mini-legend"><span>每日 19:30 起每 15 分钟轮询抓取，直到全部盘手取到 → 20:30 全量核准一次；无夜盘品种次日 09:00 自动撮合</span></div>
   </div>
   <div class="panel"><h3>组合成员（${D.members.length} 人）</h3>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${memberHtml}</div>
@@ -945,7 +963,7 @@ function actionStatus(c, act){
 function rAlign(){
   const phase = phaseOf();
   const phaseMap = {
-    waiting:{t:'数据获取中 · 20:30 核准后生成动作计划', c:'#ba7517'},
+    waiting:{t:'数据获取中 · 19:30 起每 15 分钟轮询', c:'#ba7517'},
     plan:{t:'盘前计划阶段 · 距 21:00 开盘 '+fmtCd(21,0), c:'#0969da'},
     exec:{t:'开盘执行中 · 实时刷新', c:'#1a7f37'},
     done:{t:'已收盘 · 当日执行汇总', c:'#57606a'},
