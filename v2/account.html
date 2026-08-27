@@ -393,7 +393,7 @@ function dataDayCard(){
 // 倒计时秒级更新（只改 dd-count 元素，不整页 render）
 function updateCountdown(){
   const el = document.getElementById('dd-count');
-  if(!el || mainTab!=='positions') return;
+  if(!el || mainTab!=='align') return;
   const now = new Date();
   const mk = (h,m)=>{ const t=new Date(); t.setHours(h,m,0,0); return t; };
   let next=null, label='';
@@ -406,7 +406,8 @@ function updateCountdown(){
   const pad = n=>String(n).padStart(2,'0');
   el.textContent = label+' · 倒计时 '+h+'h '+pad(m)+'m '+pad(ss)+'s';
 }
-setInterval(updateCountdown, 1000);
+// 仅持仓对齐 tab 激活时显示倒计时（持仓分析不再用数据日卡）
+setInterval(()=>{ if(mainTab==='align') updateCountdown(); }, 1000);
 function switchCombo(c){
   combo = c; page = 1;
   history.replaceState(null,'','?combo='+c);
@@ -698,8 +699,6 @@ function rPositions(D){
   const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
   const ddTxt = (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
   return `
-  <div class="ready-bar" style="cursor:pointer" onclick="toggleReadyDetail()" title="点击查看成员取数明细">📡 ${readinessHtml()} ${liveTag}</div>
-  ${dataDayCard()}
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
   <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
     <div class="chips-row">${comboChips}</div>
@@ -940,6 +939,7 @@ function rAlign(){
   const filters = ['all','已对齐','待核准','挂单中','异常'];
   return `
   <div class="ready-bar" style="cursor:pointer" onclick="toggleReadyDetail()" title="点击查看成员取数明细">📡 ${readinessHtml()}</div>
+  ${dataDayCard()}
   <div class="filterbar" style="margin-bottom:10px;gap:10px">
     <span style="font-weight:500;font-size:15px">持仓对齐</span>
     <span class="legend-chip" style="background:#f0f4fa;color:#57606a">数据日 ${esc(dd)}</span>
