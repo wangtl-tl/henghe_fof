@@ -571,6 +571,9 @@ function rPositions(D){
   return `
   <div class="ready-bar">📡 ${readinessHtml()} ${liveTag}</div>
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
+  <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
+    <div class="chips-row">${comboChips}</div>
+  </div>
   <div class="panel"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）</span></h3>${line}
     <div class="live-status" style="margin-top:6px">
       <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
@@ -599,9 +602,6 @@ function rPositions(D){
         <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>价格</th><th>手续费</th></tr>
         ${tradeRows||'<tr><td colspan="7" class="empty">暂无成交</td></tr>'}</table></div>
     </div>
-  </div>
-  <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
-    <div class="chips-row">${comboChips}</div>
   </div>
   <div class="panel" style="margin-top:12px"><h3>系统日志 <span class="hint">核准/调仓/成交（最近 50 条）</span></h3>
     <div class="log-box">${logs||'<div>暂无日志</div>'}</div>
