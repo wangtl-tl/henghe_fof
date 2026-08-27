@@ -52,6 +52,14 @@ th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{background:#eef1f5}
 .sort-indicator{font-size:9px;margin-left:3px;opacity:0.3;display:inline-block;width:8px}
 .sort-indicator.on{opacity:1;color:var(--blue);font-weight:700}
+/* 持仓对齐 Tab（2026-08-27） */
+.toggle{position:relative;width:34px;height:18px;background:#d0d7de;border-radius:9px;cursor:pointer;display:inline-block;vertical-align:middle;transition:background .2s}
+.toggle.on{background:var(--down)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s}
+.toggle.on::after{left:18px}
+.align-row:hover td{background:#f0f7ff}
+.align-row.align-sel td{background:#e6f1fb}
+.legend-chip{font-size:11px;border-radius:10px;padding:1px 8px}
 .card .label{font-size:12px;color:var(--weak);margin-bottom:4px}
 .card .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 .card .sub{font-size:11px;color:var(--weak);margin-top:2px}
@@ -130,6 +138,7 @@ svg{display:block;width:100%;height:auto}
     <button class="tab" data-tab="risk">风控能力</button>
     <button class="tab" data-tab="positions">持仓分析</button>
     <button class="tab" data-tab="history">历史数据</button>
+    <button class="tab" data-tab="align">持仓对齐</button>
   </div>
   <div id="mainContent"></div>
   <div class="footer">数据来源：衡合FOF跟投系统 · 模拟账户数据与本组合独立采集 · 仅供内部参考，不构成投资建议</div>
@@ -300,6 +309,7 @@ function render(){
   else if(mainTab==='variety') el.innerHTML = rVariety(S);
   else if(mainTab==='risk') el.innerHTML = rRisk(S);
   else if(mainTab==='history') el.innerHTML = rHistory(S);
+  else if(mainTab==='align') el.innerHTML = rAlign();
   else el.innerHTML = rPositions(S);
 }
 function renderInfoBar(D){
@@ -576,15 +586,6 @@ function rPositions(D){
   <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
     <div class="chips-row">${comboChips}</div>
   </div>
-  <div class="panel"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）</span></h3>${line}
-    <div class="live-status" style="margin-top:6px">
-      <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
-      <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
-      <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
-      <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
-      <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
-    </div>
-  </div>
   <div class="grid-3">
     <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 点击表头排序</span></h3>
       <div class="pos-table-wrap"><table>
@@ -696,6 +697,116 @@ function changeHistPage(d){
   histPage += d; if(histPage<1) histPage=1;
   render();
 }
+// ---------- 持仓对齐 Tab（每日核准看板，2026-08-27） ----------
+let alignFilter='all', alignSel=null, alignAuto=true;
+function alignStatus(st, logs){
+  const last = logs.length ? String(logs[logs.length-1]) : '';
+  if(!st && !logs.length) return {text:'快照', cls:'muted', bg:'#f0f4fa;color:#57606a'};
+  if(last.indexOf('挂单')>=0 || last.indexOf('次日')>=0) return {text:'挂单中', cls:'red', bg:'#fde8e8;color:#cf222e'};
+  if(last.indexOf('失败')>=0 || last.indexOf('异常')>=0) return {text:'异常', cls:'red', bg:'#fde8e8;color:#cf222e'};
+  if(last.indexOf('核准完成')>=0 || last.indexOf('完成')>=0) return {text:'已对齐', cls:'green', bg:'#e6f4ea;color:#1a7f37'};
+  return {text:'待核准', cls:'amber', bg:'#faebcc;color:#a06000'};
+}
+function rAlign(){
+  // 逐组合数据
+  let sumTgt=0, sumAct=0, sumDiff=0, alignedCnt=0, hasLiveTgt=false;
+  const rows = COMBOS.map(c=>{
+    const d = AA[c]||{};
+    const st = (LIVE && LIVE[c]) || null;
+    const tgt = (st && st.meta && st.meta.target_count !== undefined) ? st.meta.target_count : null;
+    const act = (st && st.positions) ? st.positions.length : ((d.sim&&d.sim.positions)||[]).length;
+    const logs = (st && st.logs) || [];
+    if(tgt!==null){ hasLiveTgt=true; sumTgt+=tgt; sumAct+=act; sumDiff+=act-tgt; }
+    const st2 = alignStatus(st, logs);
+    if(st2.text==='已对齐') alignedCnt++;
+    if(alignFilter!=='all' && st2.text!==alignFilter) return '';
+    const diffHtml = tgt===null ? '<span class="muted">—</span>'
+      : (act-tgt)===0 ? '<span style="color:var(--down)">0</span>'
+      : (act-tgt)>0 ? '<span style="color:#ba7517">+'+(act-tgt)+'</span>' : '<span class="up">'+(act-tgt)+'</span>';
+    const lastLog = logs.length ? esc(String(logs[logs.length-1]).slice(0,36)) : '<span class="muted">—</span>';
+    return `<tr class="align-row ${alignSel===c?'align-sel':''}" onclick="setAlignSel('${c}')">
+      <td>${esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''))}</td>
+      <td style="text-align:right">${tgt===null?'—':fmt(tgt)}</td>
+      <td style="text-align:right">${fmt(act)}</td>
+      <td style="text-align:right">${diffHtml}</td>
+      <td style="text-align:center"><span class="legend-chip" style="background:${st2.bg}">${st2.text}</span></td>
+      <td class="muted">${lastLog}</td>
+      <td style="text-align:right;color:var(--blue)">查看</td>
+    </tr>`;
+  }).filter(Boolean).join('');
+  // 下次核准倒计时（20:30）
+  let countdown='—';
+  try{ const now=new Date(), t=new Date(); t.setHours(20,30,0,0); if(now>t) t.setDate(t.getDate()+1);
+    const m=Math.round((t-now)/60000); countdown = m>0 ? Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m' : '已到'; }catch(e){}
+  const detailHtml = alignSel ? rAlignDetail(alignSel) : '<div class="empty" style="padding:14px">点击上方组合行查看对齐详情</div>';
+  const filters = ['all','已对齐','待核准','挂单中','异常'];
+  const filterLabels = {all:'全部'};
+  return `
+  <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+    <div class="card"><div class="label">总目标品种</div><div class="value">${hasLiveTgt?fmt(sumTgt):'—'}</div><div class="sub">${hasLiveTgt?'实时':'快照无目标'}</div></div>
+    <div class="card"><div class="label">总当前持仓</div><div class="value">${fmt(sumAct)}</div><div class="sub">10 组合合计</div></div>
+    <div class="card"><div class="label">总差异</div><div class="value" style="color:${sumDiff===0?'var(--down)':(sumDiff>0?'#ba7517':'var(--up)')}">${sumDiff>0?'+'+fmt(sumDiff):fmt(sumDiff)}</div><div class="sub">持仓 − 目标</div></div>
+    <div class="card"><div class="label">已对齐组合</div><div class="value" style="color:var(--down)">${alignedCnt} / 10</div><div class="sub">差异=0 且已核准</div></div>
+    <div class="card"><div class="label">下次核准</div><div class="value">20:30</div><div class="sub">倒计时 ${countdown}</div></div>
+  </div>
+  <div class="filterbar" style="margin-bottom:10px">
+    <span style="color:var(--sub)">状态筛选</span>
+    ${filters.map(f=>`<button class="chip-btn ${alignFilter===f?'on':''}" onclick="setAlignFilter('${f}')" style="border-radius:14px;padding:3px 12px;font-size:12px">${filterLabels[f]||f}</button>`).join('')}
+    <span style="flex:1"></span>
+    <span style="font-size:12px;color:var(--sub)">自动刷新 60s</span>
+    <span class="toggle ${alignAuto?'on':''}" onclick="setAlignAuto()"></span>
+  </div>
+  <div class="panel" style="padding:10px 12px">
+    <table><tr><th>组合</th><th style="text-align:right">目标</th><th style="text-align:right">持仓</th><th style="text-align:right">差异</th><th style="text-align:center">状态</th><th>最近核准</th><th style="text-align:right">操作</th></tr>
+      ${rows||'<tr><td colspan="7" class="empty">暂无匹配组合</td></tr>'}</table>
+    <div class="mini-legend" style="margin-top:8px">
+      <span><span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">已对齐</span> 差异=0</span>
+      <span><span class="legend-chip" style="background:#faebcc;color:#a06000">待核准</span> 持仓已恢复</span>
+      <span><span class="legend-chip" style="background:#fde8e8;color:#cf222e">挂单中/异常</span> 差异≠0</span>
+      <span style="flex:1"></span><span class="muted">差异 = 持仓 − 目标（红=缺仓，黄=超仓）</span>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:12px">${detailHtml}</div>
+  <div class="panel" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub);flex-wrap:wrap">
+    <span style="background:#f6f8fa;border:0.5px solid var(--line);border-radius:10px;padding:3px 10px">19:30 数据首查</span><span style="color:var(--weak)">→</span>
+    <span style="background:#f6f8fa;border:0.5px solid var(--line);border-radius:10px;padding:3px 10px">20:15 终查+抓取</span><span style="color:var(--weak)">→</span>
+    <span style="background:#1f2a44;color:#fff;border-radius:10px;padding:3px 10px">20:30 全量核准</span><span style="color:var(--weak)">→</span>
+    <span style="background:#f6f8fa;border:0.5px solid var(--line);border-radius:10px;padding:3px 10px">次日 09:00 无夜盘撮合</span>
+    <span style="flex:1"></span><span style="color:var(--weak)">周末自动跳过</span>
+  </div>`;
+}
+function rAlignDetail(c){
+  const d = AA[c]||{};
+  const st = (LIVE && LIVE[c]) || null;
+  const tgt = (st && st.meta && st.meta.target_count !== undefined) ? st.meta.target_count : null;
+  const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
+  const logs = (st && st.logs) || [];
+  const varieties = [...new Set(positions.map(p=>{ const s=(p.symbol||'').split('.').pop()||''; const m=s.match(/^[A-Za-z]+/); return m?m[0].toUpperCase():s; }))];
+  const diff = tgt!==null ? positions.length - tgt : null;
+  const logRows = logs.slice(-8).map(l=>'<div>'+esc(String(l).slice(0,90))+'</div>').join('');
+  const diffBg = diff===0 ? '#e6f4ea' : (diff===null ? '#f6f8fa' : (diff>0?'#fff8e6':'#fde8e8'));
+  const diffClr = diff===0 ? '#1a7f37' : (diff===null ? '#57606a' : (diff>0?'#a06000':'#cf222e'));
+  return `<h3 style="font-size:14px;margin-bottom:8px">${esc(d.name||c)} · 对齐详情</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+    <div>
+      <div style="color:var(--sub);margin-bottom:4px">当前持仓品种（${varieties.length}）</div>
+      <div style="background:#fff;border:0.5px solid var(--line);border-radius:8px;padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:var(--sub);line-height:1.8">${esc(varieties.join('  '))||'<span class="muted">无持仓</span>'}</div>
+    </div>
+    <div>
+      <div style="color:var(--sub);margin-bottom:4px">目标差异</div>
+      <div style="background:${diffBg};color:${diffClr};border-radius:8px;padding:8px;font-size:12px">
+        ${diff===null?'目标数据缺失（快照模式）':(diff===0?'无差异，持仓与目标完全一致':'目标 '+fmt(tgt)+' 品种 · 当前 '+fmt(positions.length)+' 品种 · 差异 '+(diff>0?'+':'')+fmt(diff))}
+      </div>
+      <div style="margin-top:8px;color:var(--sub)">核准日志（最近 8 条）</div>
+      <div class="log-box" style="margin-top:4px;height:auto;max-height:170px">${logRows||'<div>暂无日志</div>'}</div>
+    </div>
+  </div>`;
+}
+function setAlignSel(c){ alignSel = (alignSel===c?null:c); render(); }
+function setAlignFilter(f){ alignFilter=f; render(); }
+function setAlignAuto(){ alignAuto=!alignAuto; render(); }
+// 持仓对齐页自动刷新（仅该 Tab 激活时，读 /api/state 内存态）
+setInterval(()=>{ if(alignAuto && mainTab==='align') tryLive(); }, 60000);
 function svgSimLine(ts, vals){
   if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
   const w=720,h=200,pad=30,n=vals.length;
