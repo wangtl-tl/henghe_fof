@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>衡合FOF · 组合跟投系统</title>
+<style>
+:root{--up:#cf222e;--down:#1a7f37;--blue:#0969da;--gold:#ba7517;--text:#1f2328;--sub:#57606a;--weak:#8b949e;--page:#f6f8fa;--card:#fff;--line:#d0d7de;--nav:#1f2a44}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--page);color:var(--text);font-size:14px}
+.topnav{background:var(--nav);color:#fff;padding:0 20px;height:54px;display:flex;align-items:center;gap:22px}
+.topnav .brand{font-weight:700;font-size:17px;letter-spacing:1px;white-space:nowrap}
+.topnav .navlink{color:#c9d4e8;text-decoration:none;font-size:13.5px;padding:5px 12px;border-radius:7px}
+.topnav .navlink.active{background:#2d4a7c;color:#fff;font-weight:600;border-bottom:2px solid #ffd200}
+.topnav .navlink:hover{color:#fff}
+.topnav .spacer{flex:1}
+.topnav .nav-date{color:#8b9bb8;font-size:12px}
+.hero{background:linear-gradient(135deg,#1f2a44,#2d4a7c);color:#fff;padding:34px 20px 30px;text-align:center}
+.hero h1{font-size:26px;letter-spacing:2px;margin-bottom:8px}
+.hero .sub{color:#b9c6dd;font-size:14px}
+.hero .sub b{color:#ffd200}
+.wrap{max-width:1200px;margin:0 auto;padding:18px 20px 40px}
+.kpi-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:-22px auto 20px;position:relative;padding:0 20px;max-width:1200px}
+.kpi-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:0 2px 8px rgba(31,42,68,0.06)}
+.kpi-card .k-label{font-size:11px;color:var(--weak)}
+.kpi-card .k-value{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi-card .k-sub{font-size:11px;color:var(--sub);margin-top:1px}
+.section-title{font-size:17px;font-weight:700;margin:22px 0 12px;display:flex;align-items:center;gap:8px}
+.section-title .hint{font-size:12px;color:var(--weak);font-weight:400}
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.entry-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;cursor:pointer;text-decoration:none;color:var(--text);transition:all .15s;position:relative}
+.entry-card:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 4px 12px rgba(9,105,218,0.1)}
+.entry-card .e-icon{font-size:26px;margin-bottom:8px}
+.entry-card .e-name{font-size:15px;font-weight:700;margin-bottom:4px}
+.entry-card .e-desc{font-size:12px;color:var(--sub);line-height:1.5}
+.entry-card .e-status{position:absolute;top:12px;right:12px;font-size:10px;padding:2px 8px;border-radius:10px;background:#e6f4ea;color:var(--down)}
+.combo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.combo-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all .15s}
+.combo-card:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 4px 12px rgba(9,105,218,0.1)}
+.combo-card .c-name{font-size:14px;font-weight:700;margin-bottom:8px}
+.combo-card .c-tag{font-size:10px;background:#f0f4fa;color:var(--sub);padding:2px 7px;border-radius:8px;margin-left:6px;font-weight:400}
+.combo-card .c-metrics{display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:12px}
+.combo-card .cm{color:var(--sub)}
+.combo-card .cm b{color:var(--text);font-size:13px}
+.combo-card .cm b.up{color:var(--up)}
+.combo-card .cm b.down{color:var(--down)}
+.combo-card .c-link{margin-top:10px;font-size:11px;color:var(--blue);font-weight:600}
+.footer{text-align:center;color:var(--weak);font-size:12px;padding:24px 0}
+</style>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">衡合FOF</span>
+  <a class="navlink active" href="index.html">🏠 首页</a>
+  <a class="navlink" href="follow10.html">🖥 跟投监控</a>
+  <a class="navlink" href="account.html">📈 账户分析</a>
+  <a class="navlink" href="analysis.html">🔬 数据分析</a>
+  <a class="navlink" href="settings.html">⚙️ 系统设置</a>
+  <a class="navlink" href="intro.html">📖 系统简介</a>
+  <div class="spacer"></div>
+  <span class="nav-date" id="nav-date">--</span>
+</div>
+
+<div class="hero">
+  <h1>衡合FOF · 组合跟投系统</h1>
+  <div class="sub">10 大策略组合 · <b>真实比例跟投</b> · 每日全量校准 · 全程透明可见</div>
+</div>
+
+<div class="kpi-bar" id="kpiBar">
+  <div class="kpi-card"><div class="k-label">组合数</div><div class="k-value" id="kpi-combos">10</div><div class="k-sub">6 策略 + 4 跟投</div></div>
+  <div class="kpi-card"><div class="k-label">组合总保证金</div><div class="k-value" id="kpi-margin">--</div><div class="k-sub">10 组合合计</div></div>
+  <div class="kpi-card"><div class="k-label">覆盖品种</div><div class="k-value" id="kpi-variety">--</div><div class="k-sub">合并持仓去重</div></div>
+  <div class="kpi-card"><div class="k-label">数据日</div><div class="k-value" id="kpi-date">--</div><div class="k-sub">组合持仓最新结算日</div></div>
+  <div class="kpi-card"><div class="k-label">自动校准</div><div class="k-value" style="color:var(--down);font-size:15px">20:30 全量</div><div class="k-sub">数据就绪后对齐一次</div></div>
+  <div class="kpi-card"><div class="k-label">数据保障</div><div class="k-value" style="color:var(--blue);font-size:15px">19:30/20:15</div><div class="k-sub">双查 + 企微汇报</div></div>
+</div>
+
+<div class="wrap">
+  <div class="section-title">功能入口</div>
+  <div class="entry-grid">
+    <a class="entry-card" href="follow10.html"><span class="e-status">实时</span><div class="e-icon">🖥</div><div class="e-name">跟投监控</div><div class="e-desc">10 组合模拟账户实时大屏：权益/持仓/成交/数据就绪状态</div></a>
+    <a class="entry-card" href="account.html"><span class="e-status">分析</span><div class="e-icon">📈</div><div class="e-name">账户分析</div><div class="e-desc">每组合六维深度分析：总览/概况/盈利/品种/风控/持仓</div></a>
+    <a class="entry-card" href="analysis.html"><span class="e-status">研究</span><div class="e-icon">🔬</div><div class="e-name">数据分析</div><div class="e-desc">盘手池/风格矩阵/相关性热力图/品种透视</div></a>
+    <a class="entry-card" href="settings.html"><span class="e-status">配置</span><div class="e-icon">⚙️</div><div class="e-name">系统设置</div><div class="e-desc">调度任务/数据状态/账号配置/告警开关</div></a>
+    <a class="entry-card" href="intro.html"><span class="e-status">宣传</span><div class="e-icon">📖</div><div class="e-name">系统简介</div><div class="e-desc">组合跟投系统对外介绍与核心优势</div></a>
+  </div>
+
+  <div class="section-title">组合矩阵 <span class="hint">点击组合查看账户分析</span></div>
+  <div class="combo-grid" id="comboGrid"><div style="color:var(--weak);padding:20px">加载中...</div></div>
+</div>
+
+<div class="footer">衡合FOF 组合跟投系统 · 数据来源官方结算数据 · 仅供内部参考，不构成投资建议</div>
+
+<script src="../combo_positions.js"></script>
+<script src="../portfolio_data.js"></script>
+<script>
+const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = v => v===null||v===undefined||isNaN(v) ? '—' : Number(v).toLocaleString('zh-CN');
+function init(){
+  const cp = window.EMBEDDED_COMBO_POSITIONS || {};
+  const pf = window.EMBEDDED_PORTFOLIO || {};
+  const keys = Object.keys(cp);
+  let totalMargin = 0, varietySet = new Set(), maxDate = '';
+  keys.forEach(k => (cp[k]||[]).forEach(r => {
+    totalMargin += r.margin||0;
+    if(r.variety) varietySet.add(r.variety);
+    if(r.dateline && r.dateline>maxDate) maxDate = r.dateline;
+  }));
+  const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('kpi-combos', keys.length||10);
+  set('kpi-margin', '¥'+(totalMargin/1e8).toFixed(2)+' 亿');
+  set('kpi-variety', varietySet.size);
+  set('kpi-date', maxDate||'--');
+  set('nav-date', new Date().toLocaleDateString('zh-CN')+' '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
+  // 组合卡片
+  const grid = document.getElementById('comboGrid');
+  if(!keys.length){ grid.innerHTML = '<div style="color:var(--weak)">暂无数据</div>'; return; }
+  grid.innerHTML = keys.map(k=>{
+    const d = pf[k]||{};
+    const m = d.metrics||{};
+    const mode = ['risk_balanced','scheme_steady','scheme_neutral','long_short'].includes(k) ? '盘手级' : '合并';
+    return `<div class="combo-card" onclick="location.href='account.html?combo=${k}'">
+      <div class="c-name">${esc(d.name||k)}<span class="c-tag">${mode}跟投</span></div>
+      <div class="c-metrics">
+        <div class="cm">年化 <b class="up">${(m.annual_return||0).toFixed(1)}%</b></div>
+        <div class="cm">回撤 <b class="down">${(m.max_drawdown||0).toFixed(1)}%</b></div>
+        <div class="cm">收益回撤 <b>${(m.return_dd_ratio||0).toFixed(1)}</b></div>
+        <div class="cm">胜率 <b>${(m.win_rate||0).toFixed(1)}%</b></div>
+      </div>
+      <div class="c-link">📊 查看账户分析 →</div>
+    </div>`;
+  }).join('');
+}
+init();
+</script>
+</body>
+</html>
