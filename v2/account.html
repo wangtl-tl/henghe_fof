@@ -73,7 +73,7 @@ tr:hover td{background:#fafbfc}
 .feature-row .fv{width:52px;text-align:right;font-weight:600;flex-shrink:0}
 .footer{text-align:center;color:var(--weak);font-size:12px;padding:20px 0}
 svg{display:block;width:100%;height:auto}
-/* 跟投监控整合（2026-08-27） */
+/* 实时监控整合（2026-08-27） */
 .ready-bar{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ready-bar .ok{color:var(--down);font-weight:600}
 .ready-bar .bad{color:var(--up);font-weight:600}
@@ -93,14 +93,14 @@ svg{display:block;width:100%;height:auto}
 <body>
 <div class="topnav">
   <span class="brand">衡合FOF</span>
-  <a class="navlink" href="index.html">首页</a>
-  <a class="navlink" href="follow10.html">跟投监控</a>
-  <a class="navlink" href="index.html#matrix">组合矩阵</a>
-  <a class="navlink" href="analysis.html">数据分析</a>
-  <a class="navlink active" href="account.html">账户分析</a>
-  <a class="navlink" href="settings.html">系统设置</a>
-  <div class="spacer"></div>
-  <select id="comboSel" class="sel"></select>
+  <a class="navlink" href="index.html">🏠 首页</a>
+  <a class="navlink active" href="account.html">📈 账户分析</a>
+  <a class="navlink" href="analysis.html">🔬 数据分析</a>
+  <a class="navlink" href="settings.html">⚙️ 系统设置</a>
+  <a class="navlink" href="intro.html">📖 系统简介</a>
+<div class="spacer"></div>  <select id="comboSel" class="sel"></select>
+
+</div>  <select id="comboSel" class="sel"></select>
 </div>
 
 <div class="wrap">
@@ -327,7 +327,7 @@ function rOverview(D){
       <div class="kv2"><span>权重 ${fmt(m.weight,1)}%</span><span>收益 ${fmt(m.yield,1)}%</span></div>
       <div class="kv2"><span>回撤 ${fmt(m.drawdown,1)}%</span><span>胜率 ${fmt(m.win_rate,1)}%</span></div>
     </div>`).join('');
-  // 10 组合切换卡（跟投监控总览网格）
+  // 10 组合切换卡（实时总览网格）
   const ovCells = COMBOS.map(c=>{
     const d = AA[c]||{};
     const st = (LIVE && LIVE[c]) || null;
@@ -509,7 +509,7 @@ function rPositions(D){
   <div class="subtabs">${subtabs.map(s=>`<button class="subtab ${s[0]===subTab?'active':''}" data-sub="${s[0]}">${s[1]}</button>`).join('')}</div>
   ${body}`;
 }
-// 实时监控（跟投监控整合·首屏）
+// 实时监控（实时数据整合·首屏）
 function rSubLive(sim){
   const a = sim.account||{};
   const b=a.balance||0, avail=a.available||0, m=a.margin||0, fp=a.float_profit||0;
