@@ -152,6 +152,9 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
         .portfolio-card-item .pm-val.red { color: #cf222e; }
         .portfolio-card-item .rank-badge { position: absolute; top: -8px; right: -8px; background: #1a7f37; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; display: none; }
         .portfolio-card-item.recommended .rank-badge { display: block; }
+        .card-actions { display: flex; gap: 10px; margin-top: 9px; }
+        .card-link { font-size: 11px; color: #0969da; text-decoration: none; font-weight: 600; }
+        .card-link:hover { text-decoration: underline; }
 
         /* ====== 行情适配推荐 ====== */
         .market-recommend { background: #f6f8fa; border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
@@ -1867,6 +1870,10 @@ function renderPortfolioCards() {
                 <div class="pm"><div class="pm-label">回撤</div><div class="pm-val red">${(m.max_drawdown || 0).toFixed(1)}%</div></div>
                 <div class="pm"><div class="pm-label">收益回撤</div><div class="pm-val">${(m.return_dd_ratio || 0).toFixed(1)}</div></div>
                 <div class="pm"><div class="pm-label">胜率</div><div class="pm-val">${(m.win_rate || 0).toFixed(1)}%</div></div>
+            </div>
+            <div class="card-actions">
+                <a href="account.html?combo=${key}" onclick="event.stopPropagation()" class="card-link">📊 账户分析</a>
+                <a href="follow10.html?combo=${key}" onclick="event.stopPropagation()" class="card-link">🖥 跟投监控</a>
             </div>
             <div class="rank-badge">${i + 1}</div>
         </div>`;
