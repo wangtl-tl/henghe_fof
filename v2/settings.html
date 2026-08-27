@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统设置 · 衡合FOF</title>
+<style>
+:root{--up:#cf222e;--down:#1a7f37;--blue:#0969da;--gold:#ba7517;--text:#1f2328;--sub:#57606a;--weak:#8b949e;--page:#f6f8fa;--card:#fff;--line:#d0d7de;--nav:#1f2a44}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--page);color:var(--text);font-size:14px}
+.topnav{background:var(--nav);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:24px}
+.topnav .brand{font-weight:700;font-size:16px;letter-spacing:1px}
+.topnav .navlink{color:#c9d4e8;text-decoration:none;font-size:13px;padding:4px 10px;border-radius:6px}
+.topnav .navlink.active{background:#2d4a7c;color:#fff}
+.topnav .navlink:hover{color:#fff}
+.topnav .spacer{flex:1}
+.wrap{max-width:1080px;margin:0 auto;padding:16px 20px 40px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.panel h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h3 .hint{font-size:11px;color:var(--weak);font-weight:400}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f6f8fa;color:var(--sub);font-weight:600;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid #eef1f5;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr:hover td{background:#fafbfc}
+.ok{color:var(--down)}.warn{color:var(--gold)}.bad{color:var(--up)}.muted{color:var(--weak)}
+.toggle{position:relative;width:42px;height:22px;background:#d0d7de;border-radius:11px;cursor:pointer;display:inline-block;vertical-align:middle;transition:background .2s}
+.toggle.on{background:var(--down)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:left .2s}
+.toggle.on::after{left:22px}
+.setting-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px dashed #eaeef2;font-size:13px}
+.setting-row:last-child{border-bottom:none}
+.setting-row .desc{color:var(--sub);font-size:12px;margin-top:2px}
+.setting-row input[type=number]{border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:90px;font-size:13px}
+.footer{text-align:center;color:var(--weak);font-size:12px;padding:20px 0}
+</style>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">衡合FOF</span>
+  <a class="navlink" href="index.html">首页</a>
+  <a class="navlink" href="follow10.html">跟投监控</a>
+  <a class="navlink" href="index.html#matrix">组合矩阵</a>
+  <a class="navlink" href="analysis.html">数据分析</a>
+  <a class="navlink" href="account.html">账户分析</a>
+  <a class="navlink active" href="settings.html">系统设置</a>
+  <div class="spacer"></div>
+</div>
+<div class="wrap">
+
+  <div class="panel"><h3>⏰ 调度任务 <span class="hint">跟投系统每日自动链路（工作日）</span></h3>
+    <table>
+      <tr><th>任务</th><th>时间</th><th>状态</th><th>说明</th></tr>
+      <tr><td>衡合FOF每日早报</td><td>08:00</td><td class="ok">● 运行中</td><td>抓取快照 → 刷新持仓/净值 → 推 GitHub → 企微早报</td></tr>
+      <tr><td>跟投数据首查</td><td>19:30</td><td class="ok">● 运行中</td><td>探测成员数据就绪，写延误记录（不打扰群）</td></tr>
+      <tr><td>跟投数据终查+抓取</td><td>20:15</td><td class="ok">● 运行中</td><td>终查 → 全量抓当天结算 → 重建组合持仓 → 企微汇报</td></tr>
+      <tr><td><b>跟投全量核准</b></td><td><b>20:30</b></td><td class="ok">● 运行中</td><td>每日一次全量对齐目标；无夜盘品种次日 09:00 自动撮合</td></tr>
+      <tr><td>每周周报推送</td><td>周五 17:00</td><td class="ok">● 运行中</td><td>周度组合回顾推送企微</td></tr>
+      <tr><td>跟投核准·无夜盘（旧）</td><td>09:00</td><td class="muted">○ 已停用</td><td>三时点核准取消，统一为 20:30 全量</td></tr>
+      <tr><td>跟投核准·股指国债（旧）</td><td>09:30</td><td class="muted">○ 已停用</td><td>同上</td></tr>
+    </table>
+    <div class="muted" style="font-size:12px;margin-top:8px">说明：盘手数据每日结算后获取一次，因此持仓对齐每日只做一次（20:30），不再分三个时点。</div>
+  </div>
+
+  <div class="panel"><h3>📊 数据状态 <span class="hint">各数据文件最新结算日</span></h3>
+    <table id="dataStatus">
+      <tr><th>数据项</th><th>数据日</th><th>状态</th></tr>
+      <tr><td>组合持仓（combo_positions.js）</td><td id="ds-combo">--</td><td id="ds-combo-st">--</td></tr>
+      <tr><td>盘手持仓（positions_data.js）</td><td id="ds-pos">--</td><td id="ds-pos-st">--</td></tr>
+      <tr><td>组合净值（portfolio_data.js）</td><td id="ds-nav">--</td><td id="ds-nav-st">--</td></tr>
+      <tr><td>账户分析（account_analysis.js）</td><td id="ds-acct">--</td><td id="ds-acct-st">--</td></tr>
+      <tr><td>模拟账户结算</td><td id="ds-settle">--</td><td id="ds-settle-st">--</td></tr>
+    </table>
+    <div class="muted" style="font-size:12px;margin-top:8px">数据链路：官网 19:00 更新 → 20:15 抓取 → 20:30 核准使用当天数据。次日 06:00/08:00 刷新为展示数据。</div>
+  </div>
+
+  <div class="panel"><h3>🔐 账号配置 <span class="hint">只读展示，修改需本地改 config/secrets.json</span></h3>
+    <table>
+      <tr><th>用途</th><th>账号</th><th>状态</th></tr>
+      <tr><td>数据获取（官网）</td><td class="muted">137****9613</td><td class="ok">● 正常</td></tr>
+      <tr><td>模拟撮合 1</td><td class="muted">133***（脱敏）</td><td class="ok">● 已连接</td></tr>
+      <tr><td>模拟撮合 2</td><td class="muted">139***（脱敏）</td><td class="ok">● 已连接</td></tr>
+      <tr><td>模拟撮合 3 / 4</td><td class="muted">（脱敏）</td><td class="muted">按组合错峰分配</td></tr>
+      <tr><td>企业微信推送</td><td class="muted">webhook（脱敏）</td><td class="ok">● 正常</td></tr>
+    </table>
+  </div>
+
+  <div class="panel"><h3>🚨 告警配置 <span class="hint">保存在本机浏览器，仅本页生效</span></h3>
+    <div class="setting-row">
+      <div><div>企微推送开关</div><div class="desc">数据未就绪 / 核准异常时是否推送企业微信群</div></div>
+      <div class="toggle on" id="tg-wecom" onclick="toggleSet('wecom',this)"></div>
+    </div>
+    <div class="setting-row">
+      <div><div>风险度告警阈值</div><div class="desc">模拟账户风险度超过阈值时在监控页标红</div></div>
+      <input type="number" id="risk-th" min="50" max="100" value="75" onchange="saveRiskTh()"> %
+    </div>
+    <div class="setting-row">
+      <div><div>数据未就绪告警</div><div class="desc">终查仍有成员未拿到数据时推送企微告警</div></div>
+      <div class="toggle on" id="tg-miss" onclick="toggleSet('miss',this)"></div>
+    </div>
+    <div class="setting-row">
+      <div><div>核准动作量提醒</div><div class="desc">单日核准动作超过 200 笔时提醒（首次校准场景）</div></div>
+      <div class="toggle off" id="tg-big" onclick="toggleSet('big',this)"></div>
+    </div>
+  </div>
+
+</div>
+<div class="footer">衡合FOF 跟投系统 · 设置页仅供内部参考</div>
+
+<script src="../combo_positions.js"></script>
+<script src="../portfolio_data.js"></script>
+<script src="../account_analysis.js"></script>
+<script>
+function fmtDate(d){ return d||'—'; }
+function freshStat(d){
+  if(!d) return '<span class="muted">未知</span>';
+  const days = Math.floor((Date.now() - new Date(d).getTime())/864e5);
+  if(days<=1) return '<span class="ok">● 新鲜</span>';
+  if(days<=3) return '<span class="warn">● 滞后 ' + days + ' 天</span>';
+  return '<span class="bad">● 陈旧 ' + days + ' 天</span>';
+}
+function initDataStatus(){
+  const cp = window.EMBEDDED_COMBO_POSITIONS||{};
+  let comboDate = '';
+  Object.values(cp).forEach(recs=>(recs||[]).forEach(r=>{ if(r.dateline && r.dateline>comboDate) comboDate=r.dateline; }));
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('ds-combo', fmtDate(comboDate));
+  const st1 = document.getElementById('ds-combo-st'); if(st1) st1.innerHTML = freshStat(comboDate);
+  // 组合净值最新日
+  const pf = window.EMBEDDED_PORTFOLIO||{};
+  let navDate = '';
+  Object.values(pf).forEach(b=>{ const ds=(b&&b.nav_dates)||[]; if(ds.length && ds[ds.length-1]>navDate) navDate=ds[ds.length-1]; });
+  set('ds-nav', fmtDate(navDate));
+  const st2 = document.getElementById('ds-nav-st'); if(st2) st2.innerHTML = freshStat(navDate);
+  // 账户分析最新结算
+  const aa = window.ACCOUNT_ANALYSIS||{};
+  let settleDate = '', acctDate = '';
+  Object.values(aa).forEach(x=>{
+    const s = x&&x.sim&&x.sim.settle;
+    if(s && s.settle_date && s.settle_date>settleDate) settleDate = s.settle_date;
+  });
+  set('ds-settle', fmtDate(settleDate));
+  const st3 = document.getElementById('ds-settle-st'); if(st3) st3.innerHTML = freshStat(settleDate);
+  // 持仓数据日（positions_data 不在本页加载，用账户分析 sim 数据日代替）
+  set('ds-pos', fmtDate(comboDate));
+  const st4 = document.getElementById('ds-pos-st'); if(st4) st4.innerHTML = '<span class="muted">与组合持仓同源</span>';
+  set('ds-acct', fmtDate(settleDate));
+  const st5 = document.getElementById('ds-acct-st'); if(st5) st5.innerHTML = '<span class="muted">随终查更新</span>';
+}
+// 告警配置（localStorage）
+function loadSettings(){
+  try{
+    const s = JSON.parse(localStorage.getItem('henghe_fof_settings')||'{}');
+    document.getElementById('tg-wecom').classList.toggle('on', s.wecom!==false);
+    document.getElementById('tg-miss').classList.toggle('on', s.miss!==false);
+    document.getElementById('tg-big').classList.toggle('on', s.big===true);
+    if(s.riskTh) document.getElementById('risk-th').value = s.riskTh;
+  }catch(e){}
+}
+function saveSettings(){
+  const s = {
+    wecom: document.getElementById('tg-wecom').classList.contains('on'),
+    miss: document.getElementById('tg-miss').classList.contains('on'),
+    big: document.getElementById('tg-big').classList.contains('on'),
+    riskTh: document.getElementById('risk-th').value || 75,
+  };
+  localStorage.setItem('henghe_fof_settings', JSON.stringify(s));
+}
+function toggleSet(k, el){
+  el.classList.toggle('on'); saveSettings();
+}
+function saveRiskTh(){ saveSettings(); }
+loadSettings();
+initDataStatus();
+</script>
+</body>
+</html>
