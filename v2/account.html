@@ -917,7 +917,7 @@ function rAlignCards(){
     const fmtWan = v=> '¥'+(v/1e4).toFixed(0)+'万';
     const fmtYi = v=> '¥'+(v/1e8).toFixed(2)+'亿';
     const fmtAmt = v=> v>=1e8 ? fmtYi(v) : fmtWan(v);
-    return `<div class="align-card ${alignSel===c?'align-sel':''}" onclick="setAlignSel('${c}')">
+    return `<div class="align-card ${alignSel===c?'align-sel':''}" onclick="openCompareModal('${c}')">
       <div class="ac-head">
         <span style="font-weight:500;font-size:14px">${nm}</span>
         <span class="legend-chip" style="background:${st2.bg}">${st2.text}</span>
@@ -1132,6 +1132,100 @@ function closeAlignModal(){
 function modalNav(d){
   alignModalIdx = (alignModalIdx + d + COMBOS.length) % COMBOS.length;
   document.getElementById('alignModalBox').innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
+}
+// 弹窗：原组合 ↔ 跟投账户 品种逐项对照
+function compareByVariety(c){
+  const cp = (window.EMBEDDED_COMBO_POSITIONS||{})[c]||[];
+  const d = AA[c]||{};
+  const st = (LIVE && LIVE[c]) || null;
+  const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
+  const oMap={}, fMap={};
+  cp.forEach(r=>{
+    const v=(r.variety||'').toUpperCase(); if(!v) return;
+    if(!oMap[v]) oMap[v]={net:0,margin:0,names:new Set()};
+    oMap[v].net += Math.abs(r.net||0);
+    oMap[v].margin += r.margin||0;
+    if(r.name) oMap[v].names.add(r.name);
+  });
+  positions.forEach(p=>{
+    const s=(p.symbol||'').split('.').pop()||'';
+    const m=s.match(/^[A-Za-z]+/);
+    const v=m?m[0].toUpperCase():s; if(!v) return;
+    if(!fMap[v]) fMap[v]={net:0,margin:0,name:''};
+    fMap[v].net += Math.abs(p.long||0)+Math.abs(p.short||0);
+    fMap[v].margin += p.margin||0;
+    fMap[v].name = p.name||v;
+  });
+  const a = comboAlign(c);
+  const rows = Array.from(new Set([...Object.keys(oMap),...Object.keys(fMap)])).sort().map(v=>{
+    const o=oMap[v]||{net:0,margin:0,names:new Set()};
+    const f=fMap[v]||{net:0,margin:0,name:''};
+    const tLots=Math.round(o.net*a.scale);
+    const tMargin=o.margin*a.scale;
+    const ok = tLots===0 ? (f.net===0) : Math.abs(f.net-tLots)<=Math.max(1,Math.round(tLots*0.05));
+    return {v, oNet:o.net, oMargin:o.margin, oNames:[...o.names], fNet:f.net, fMargin:f.margin, fName:f.name, tLots, tMargin, ok};
+  });
+  return {rows, a};
+}
+function modalCompareContent(c){
+  const d=AA[c]||{};
+  const {rows, a}=compareByVariety(c);
+  const isNet=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].combo_type!=='single');
+  const ready=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].data_ready);
+  const ts=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].trader_status)||{got:0,total:0};
+  const missNames=(ts.missing||[]).map(m=>esc(m.name)).join('、');
+  const strip=isNet?(ready
+    ? `<div class="ok-strip">✅ 净持仓组合 · ${ts.got}/${ts.total} 盘手已取数 · 数据齐全可对</div>`
+    : `<div class="danger-strip">⚠️ 净持仓组合 · ${ts.got}/${ts.total} 盘手已取数，缺少 ${missNames||'未知'} · 数据不全</div>`)
+    : (ts.got>0
+    ? `<div class="ok-strip">✅ 单盘手跟投 · ${ts.got} 位有数据</div>`
+    : `<div class="danger-strip">⚠️ 单盘手数据未取到</div>`);
+  const tableRows = rows.map(r=>{
+    const dir = r.fNet>r.oNet?'+':'';
+    const okBg = r.ok?'#e6f4ea':'#fde8e8';
+    const okClr = r.ok?'#1a7f37':'#cf222e';
+    return `<tr>
+      <td><b>${r.v}</b> <span class="muted" style="font-size:11px">${esc(r.oNames.join('/')||r.fName)}</span></td>
+      <td style="text-align:right">${r.oNet}</td>
+      <td style="text-align:right">${r.fNet}</td>
+      <td style="text-align:right" class="muted">${r.tLots}</td>
+      <td style="text-align:right">${dir}${(r.fNet-r.tLots)}</td>
+      <td style="text-align:right" class="muted">¥${(r.tMargin/1e4).toFixed(0)}万</td>
+      <td style="text-align:center"><span class="legend-chip" style="background:${okBg};color:${okClr}">${r.ok?'✓':'✗'}</span></td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">无数据</td></tr>';
+  const nm = esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''));
+  return `<h3>${nm} · 原组合 ↔ 跟投账户 品种对照</h3>
+  <div class="modal-nav">
+    <button onclick="compareNav(-1)">◀ 上一组合</button>
+    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">${isNet?'净持仓组合':'单盘手组合'} · 跟投比例 ${(a.scale*100).toFixed(2)}%</span>
+    <button onclick="compareNav(1)">下一组合 ▶</button>
+  </div>
+  ${strip}
+  <div style="color:var(--sub);font-size:12px;margin-bottom:6px">品种逐项对照（${rows.length} 个品种）</div>
+  <div class="trade-table-wrap" style="max-height:380px;margin-bottom:10px"><table>
+    <tr><th>品种</th><th style="text-align:right">原手数</th><th style="text-align:right">跟手数</th><th style="text-align:right">理论</th><th style="text-align:right">差异</th><th style="text-align:right">理论保证金</th><th style="text-align:center">对齐</th></tr>
+    ${tableRows}</table></div>
+  <div class="mini-legend">
+    <span>原 <b>${fmt(a.oLots)}</b> 手 · 跟 <b>${fmt(a.fLots)}</b> 手 · 理论 <b>${fmt(a.tLots)}</b> 手</span>
+    <span>原 <b>¥${(a.oMargin/1e4).toFixed(0)}万</b> · 跟 <b>¥${(a.fMargin/1e4).toFixed(0)}万</b> · 权益 <b>¥${(a.fBal/1e4).toFixed(0)}万</b></span>
+    <span><b>对齐度 ${Math.min(100,Math.max(0,a.alignPct)).toFixed(2)}%</b></span>
+  </div>
+  <div class="modal-footer">
+    <button style="padding:6px 14px;border-radius:8px;border:0.5px solid var(--line);background:#fff;cursor:pointer" onclick="closeAlignModal()">关闭</button>
+    <button style="padding:6px 14px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer" onclick="jumpFromModal('${c}')">→ 跳转到该组合持仓分析</button>
+  </div>`;
+}
+let compareModalIdx=0;
+function openCompareModal(c){
+  compareModalIdx=COMBOS.indexOf(c);
+  if(compareModalIdx<0) compareModalIdx=0;
+  document.getElementById('alignModalBox').innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
+  document.getElementById('alignModal').classList.add('open');
+}
+function compareNav(d){
+  compareModalIdx=(compareModalIdx+d+COMBOS.length)%COMBOS.length;
+  document.getElementById('alignModalBox').innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
 }
 function jumpFromModal(c){
   closeAlignModal();
