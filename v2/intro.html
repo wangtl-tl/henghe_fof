@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>衡合FOF · 组合跟投系统简介</title>
+<style>
+  :root{
+    --bg:#f6f8fa; --card:#ffffff; --border:#d0d7de;
+    --text:#1f2328; --sub:#57606a; --dim:#8b949e;
+    --blue:#0969da; --red:#cf222e; --green:#1a7f37; --gold:#d4a72c;
+    --navy:#1f2a44;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:"Microsoft YaHei",-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;}
+  .topbar{background:linear-gradient(135deg,#1f2a44 0%,#12203a 100%);color:#fff;padding:14px 0;}
+  .topbar .inner{max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  .topbar .brand{font-size:17px;font-weight:700;letter-spacing:.5px;}
+  .topbar .brand span{color:#7fb3ff;}
+  .topbar a.back{color:#c8d1e0;text-decoration:none;font-size:13px;border:1px solid #3a4a66;padding:5px 12px;border-radius:6px;transition:.2s;}
+  .topbar a.back:hover{background:#2b3a55;color:#fff;}
+  .hero{background:linear-gradient(135deg,#ffffff 0%,#eef3fa 100%);border-bottom:1px solid var(--border);padding:56px 20px 48px;text-align:center;}
+  .hero h1{font-size:34px;font-weight:800;background:linear-gradient(90deg,#1f2a44,#0969da);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;}
+  .hero .sub{margin-top:12px;font-size:17px;color:var(--sub);font-weight:600;}
+  .hero .tagline{margin-top:14px;font-size:14px;color:var(--dim);max-width:640px;margin-left:auto;margin-right:auto;}
+  .wrap{max-width:960px;margin:0 auto;padding:36px 20px 60px;}
+  section{margin-bottom:40px;}
+  h2{font-size:22px;color:var(--navy);margin-bottom:16px;padding-left:12px;border-left:4px solid var(--blue);}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px 22px;margin-bottom:14px;box-shadow:0 1px 3px rgba(31,35,40,.04);}
+  .card p{color:var(--sub);font-size:14.5px;}
+  .card strong{color:var(--text);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+  .adv{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;box-shadow:0 1px 3px rgba(31,35,40,.04);}
+  .adv .num{display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:var(--blue);color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;}
+  .adv h3{font-size:15.5px;margin-bottom:6px;}
+  .adv p{font-size:13px;color:var(--sub);}
+  .flow{display:flex;flex-direction:column;gap:0;align-items:stretch;}
+  .flow-step{display:flex;align-items:flex-start;gap:14px;padding:14px 0;}
+  .flow-step .dot{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+  .flow-step .txt{flex:1;}
+  .flow-step .txt b{font-size:14.5px;}
+  .flow-step .txt span{font-size:13px;color:var(--sub);}
+  .arrow{color:var(--blue);font-size:18px;text-align:center;padding:2px 0 2px 22px;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:13.5px;}
+  th{background:var(--navy);color:#fff;padding:11px 14px;text-align:left;font-weight:600;}
+  td{padding:10px 14px;border-top:1px solid var(--border);color:var(--sub);vertical-align:top;}
+  td:first-child{color:var(--text);font-weight:600;}
+  tr:nth-child(even) td{background:#f8fafc;}
+  .who{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+  .who .card h3{color:var(--blue);font-size:15px;margin-bottom:6px;}
+  .who .card p{font-size:13.5px;}
+  .compliance{background:#fff8f0;border:1px solid #f0d9b0;border-radius:10px;padding:16px 20px;font-size:13px;color:#8a6d3b;}
+  .compliance p{margin-bottom:4px;}
+  .footer{background:var(--navy);color:#aeb9cc;text-align:center;padding:20px;font-size:13px;}
+  .footer b{color:#fff;}
+  .slogan{text-align:center;font-size:15px;color:var(--blue);font-weight:700;margin-top:34px;letter-spacing:.5px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="inner">
+    <div class="brand">衡合FOF <span>·</span> 组合管理平台</div>
+    <a class="back" href="./index.html">← 返回数据主站</a>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>衡合FOF · 组合跟投系统简介</h1>
+  <div class="sub">专业组合管理 · 智能跟投 · 全流程风控</div>
+  <div class="tagline">以机构级方法论，把"多策略组合"的配置能力，变成看得见、跟得上的执行体系。</div>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <h2>一、关于衡合FOF</h2>
+    <div class="card">
+      <p>衡合FOF 是一套<strong>多策略组合管理与跟投体系</strong>。我们从庞大的真实交易者群体中，通过严格的量化筛选（收益、回撤、风格、资金规模等维度），精选出多位风格互补的专业成员，组成 <strong>10 大策略组合</strong>——涵盖进攻型、平衡型、稳健型等多元风格，形成"一揽多策"的组合配置。</p>
+      <p style="margin-top:10px;">在此基础上，系统为每个组合配备独立模拟资金账户，<strong>每日自动把账户持仓校准到与组合一致的仓位水平</strong>，让组合的策略能力可以完整、持续地被执行。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>二、系统核心优势</h2>
+    <div class="grid">
+      <div class="adv"><span class="num">1</span><h3>多策略矩阵，一次配齐</h3><p>10 大组合覆盖方向进攻、多空对冲、板块分散、稳健成长等多元定位，通过组合天然实现分散，不必押注单一风格。</p></div>
+      <div class="adv"><span class="num">2</span><h3>真实比例跟投，不盲目满仓</h3><p>跟投比例严格按组合的真实资金结构计算——组合半仓，我们半仓；组合满仓，我们才满仓，绝不放大风险敞口。</p></div>
+      <div class="adv"><span class="num">3</span><h3>每日自动校准，精准不浪费</h3><p>每天三个校准时点（夜盘、日盘、股指）自动对齐目标持仓：只调差异、方向反转先平后开、一致则不动。</p></div>
+      <div class="adv"><span class="num">4</span><h3>数据零滞后保障</h3><p>每晚自动核对当日数据是否齐全：全部到位报平安，缺数据立即告警并记录延误品种，绝不用过期数据执行。</p></div>
+      <div class="adv"><span class="num">5</span><h3>机构级风控纪律</h3><p>保证金占用上限控制、不足 1 手不跟、取整只向下杜绝超支、非交易日自动跳过，纪律即底线。</p></div>
+      <div class="adv"><span class="num">6</span><h3>全程透明可见</h3><p>实时监控界面呈现每个组合账户的权益、持仓、盈亏、风险度，异常自动汇报，执行可追溯、可复盘。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>三、它如何工作</h2>
+    <div class="card">
+      <div class="flow">
+        <div class="flow-step"><div class="dot">1</div><div class="txt"><b>专业成员组合</b><br><span>10 大策略组合，风格互补、量化筛选</span></div></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><div class="dot">2</div><div class="txt"><b>组合持仓目标</b><br><span>品种级合并，完整保留方向结构</span></div></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><div class="dot">3</div><div class="txt"><b>模拟资金账户</b><br><span>按真实资金比例换算，每日三时点自动校准</span></div></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><div class="dot">4</div><div class="txt"><b>持仓与组合保持同一"轻重水平"</b><br><span>只调差异、反转保护、占用上限</span></div></div>
+      </div>
+      <div class="slogan">组合怎么配，账户就怎么跟；组合多谨慎，账户就多谨慎。</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>四、与普通跟投的区别</h2>
+    <table>
+      <tr><th>维度</th><th>普通方式</th><th>衡合FOF 跟投系统</th></tr>
+      <tr><td>对齐口径</td><td>凭感觉 / 简单倍数放大</td><td>按真实资金结构精确比例</td></tr>
+      <tr><td>更新频率</td><td>滞后、靠手动</td><td>每日三个时点自动校准</td></tr>
+      <tr><td>数据保障</td><td>无监控，陈旧数据照用</td><td>就绪核对 + 缺数告警 + 延误记录</td></tr>
+      <tr><td>风控</td><td>依赖个人经验</td><td>占用上限 + 最小手数 + 防超支</td></tr>
+      <tr><td>仓位水平</td><td>容易放大风险</td><td>严格保留组合原仓位水平</td></tr>
+      <tr><td>透明度</td><td>执行过程不透明</td><td>实时监控 + 异常自动汇报</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>五、适合谁</h2>
+    <div class="who">
+      <div class="card"><h3>组合投资理念</h3><p>认同组合投资，希望按专业体系配置、而非押注单一风格的投资者。</p></div>
+      <div class="card"><h3>风险纪律优先</h3><p>希望账户与组合保持同等"轻重"、不愿盲目满仓的投资者。</p></div>
+      <div class="card"><h3>透明执行偏好</h3><p>关注执行过程，需要每一步都可看、可查、可复盘的投资者。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>六、合规声明</h2>
+    <div class="compliance">
+      <p>· 本系统为组合管理与研究展示用途，不构成任何投资建议，不对收益作任何承诺。</p>
+      <p>· 期货交易具有高风险，过往表现不代表未来收益。</p>
+      <p>· 市场有风险，配置需谨慎。</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="footer">
+  <b>衡合FOF</b> · 让组合的策略能力，成为你账户的日常<br>
+  <span style="font-size:12px;">数据与执行均基于模拟环境，仅供研究展示</span>
+</div>
+
+</body>
+</html>
