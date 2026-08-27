@@ -315,6 +315,11 @@ async function tryLive(){
     const r5 = await fetch('http://127.0.0.1:18081/api/poll?_='+Date.now(), {cache:'no-store'});
     if(r5.ok) POLL = await r5.json();
   }catch(e){ POLL = null; }
+  // 实时拉结算单（覆盖 embedded，让"历史数据"tab 永远是最新的；DB 里今天之前的也都在）
+  try{
+    const r6 = await fetch('http://127.0.0.1:18081/api/settlement?combo='+combo, {cache:'no-store'});
+    if(r6.ok){ const sd = await r6.json(); if(sd && sd.settlements){ window.__SETL = window.__SETL||{}; window.__SETL[combo] = sd.settlements; render(); } }
+  }catch(e){}
   render();
 }
 function liveSim(D){
@@ -816,7 +821,9 @@ function rDetails(sim){
 // ---------- 历史数据 Tab（每日结算单列表，参考原网站原始数据） ----------
 let histPage = 1, histSize = 50;
 function rHistory(D){
-  const list = (D.sim && D.sim.settlements) || [];
+  // 结算单优先实时拉（/api/settlement），启动时 async 加载完由 render() 重渲；
+  // 同步渲染先回退到 embedded D.sim.settlements（首次无网络延迟时）
+  const list = (window.__SETL && window.__SETL[combo]) || (D.sim && D.sim.settlements) || [];
   const total = list.length;
   const pages = Math.max(1, Math.ceil(total/histSize));
   if(histPage > pages) histPage = pages;
