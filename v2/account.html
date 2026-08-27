@@ -36,7 +36,7 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--pag
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 /* 持仓分析单页版面（2026-08-27 重做） */
-.grid-3{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:1080px){.grid-3{grid-template-columns:1fr}}
 .pos-table-wrap,.trade-table-wrap{max-height:380px;overflow-y:auto;border:1px solid #eef1f5;border-radius:8px}
 .pos-table-wrap th{position:sticky;top:0;z-index:1}
@@ -47,6 +47,11 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--pag
 .details-toggle{font-size:12px;color:var(--blue);cursor:pointer;margin-top:8px;user-select:none}
 .details-area{margin-top:8px;padding-top:8px;border-top:1px dashed #eaeef2;display:none}
 .details-area.open{display:block}
+/* 持仓明细表头排序 */
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{background:#eef1f5}
+.sort-indicator{font-size:9px;margin-left:3px;opacity:0.3;display:inline-block;width:8px}
+.sort-indicator.on{opacity:1;color:var(--blue);font-weight:700}
 .card .label{font-size:12px;color:var(--weak);margin-bottom:4px}
 .card .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 .card .sub{font-size:11px;color:var(--weak);margin-top:2px}
@@ -140,6 +145,7 @@ const urlParams = new URLSearchParams(location.search);
 let combo = urlParams.get('combo') || (COMBOS[0] || '');
 let mainTab = 'overview';
 let page = 1, pageSize = 20;
+let posSort = {col:null, dir:1};  // 持仓明细排序：col=null 不排序，dir=1 降序 -1 升序
 
 const fmt = (v, d=0) => v===null||v===undefined||isNaN(v) ? '—' : Number(v).toLocaleString('zh-CN', {maximumFractionDigits:d, minimumFractionDigits:0});
 const wan = (v, d=0) => v===null||v===undefined||isNaN(v) ? '—' : (Number(v)/1e4).toLocaleString('zh-CN', {maximumFractionDigits:d});
@@ -523,8 +529,22 @@ function rPositions(D){
   let line = '<div class="empty">暂无净值曲线</div>';
   if(ln && ln.t) line = svgSimLine(ln.t.map(t=>t*1000), ln.balance);
   else if(ln.length>1) line = svgSimLine(ln.map(p=>p.t*1000), ln.map(p=>p.balance));
-  // 持仓明细（去重期权）
-  const positions = (sim.positions||[]).filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
+  // 持仓明细（去重期权 + 排序）
+  let positions = (sim.positions||[]).filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
+  if(posSort.col){
+    const col = posSort.col, dir = posSort.dir;
+    positions = positions.slice().sort((a,b)=>{
+      let va, vb;
+      if(col==='symbol'){ va=a.symbol||''; vb=b.symbol||''; return dir>0?String(vb).localeCompare(String(va)):String(va).localeCompare(String(vb)); }
+      va = +a[col]||0; vb = +b[col]||0;
+      return dir>0 ? vb-va : va-vb;
+    });
+  }
+  const ind = (col, label) => {
+    const on = posSort.col===col;
+    const arrow = on ? (posSort.dir>0?'▼':'▲') : '↕';
+    return `${label}<span class="sort-indicator ${on?'on':''}">${arrow}</span>`;
+  };
   const posRows = positions.map(p=>{
     const sym=p.symbol||'';
     const side = (p.long||0)>(p.short||0)?'多':((p.short||0)>(p.long||0)?'空':'—');
@@ -551,19 +571,27 @@ function rPositions(D){
   return `
   <div class="ready-bar">📡 ${readinessHtml()} ${liveTag}</div>
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
-  <div class="grid-3">
-    <div class="panel"><h3>账户净值曲线 <span class="hint">实时</span></h3>${line}
-      <div class="live-status" style="margin-top:6px">
-        <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
-        <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
-        <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
-        <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
-        <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
-      </div>
+  <div class="panel"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）</span></h3>${line}
+    <div class="live-status" style="margin-top:6px">
+      <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
+      <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
+      <span>目标品种 ${fmt((sim.meta&&sim.meta.target_count)||0)}</span>
+      <span>最新结算 ${(sim.settle&&sim.settle.settle_date)||'—'}</span>
+      <span>手续费 ${fmt(sim.settle&&sim.settle.day_commission,0)}</span>
     </div>
-    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条</span></h3>
+  </div>
+  <div class="grid-3">
+    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 点击表头排序</span></h3>
       <div class="pos-table-wrap"><table>
-        <tr><th>合约</th><th>多单</th><th>空单</th><th>方向</th><th>最新价</th><th>浮动盈亏</th><th>保证金(万)</th></tr>
+        <tr>
+          <th class="sortable" onclick="setPosSort('symbol')">${ind('symbol','合约')}</th>
+          <th class="sortable" onclick="setPosSort('long')">${ind('long','多单')}</th>
+          <th class="sortable" onclick="setPosSort('short')">${ind('short','空单')}</th>
+          <th>方向</th>
+          <th class="sortable" onclick="setPosSort('last')">${ind('last','最新价')}</th>
+          <th class="sortable" onclick="setPosSort('profit')">${ind('profit','浮动盈亏')}</th>
+          <th class="sortable" onclick="setPosSort('margin')">${ind('margin','保证金(万)')}</th>
+        </tr>
         ${posRows||'<tr><td colspan="7" class="empty">暂无持仓</td></tr>'}</table></div>
     </div>
     <div class="panel"><h3>成交记录 <span class="hint">最近 ${trades.length} 笔</span></h3>
@@ -580,6 +608,11 @@ function rPositions(D){
     <div class="details-toggle" onclick="this.nextElementSibling.classList.toggle('open')">▾ 详细数据（平仓明细/出入金/期权）</div>
     <div class="details-area">${rDetails(sim)}</div>
   </div>`;
+}
+function setPosSort(col){
+  if(posSort.col===col){ posSort.dir = -posSort.dir; }
+  else { posSort.col = col; posSort.dir = 1; }
+  render();
 }
 function rDetails(sim){
   // 平仓明细（最近 30）
