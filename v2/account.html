@@ -347,7 +347,7 @@ function readinessHtml(){
     const n = READY.total_traders||READY.trader_count||'';
     summary = '<span class="ok">✅ 数据全部就绪</span><span class="muted-note">'+esc(n)+' 位成员数据已获取 · 20:30 全量核准</span>';
   } else {
-    const names = (READY.missing||[]).slice(0,4).map(x=>esc(x.name||x.aid)).join('、');
+    const names = (READY.missing||[]).slice(0,4).map(x=>esc(String(x.aid))).join('、');
     const pollTxt = POLL ? ` · 轮询第 ${esc(POLL.round||POLL.round_no||'')} 轮 · 已取 ${POLL.ready||0}/${POLL.total||0}` : '';
     summary = '<span class="bad">⚠️ '+esc(READY.missing_count)+' 位成员未就绪</span><span class="muted-note">'+(names?names+' …':'')+pollTxt+'</span>';
   }
@@ -362,13 +362,13 @@ function readyDetailHtml(){
   const gotCnt = Math.max(total-missCnt,0);
   // 全部成员名单（10 组合 members 聚合）
   const allMembers = new Map();
-  COMBOS.forEach(c => (AA[c].members||[]).forEach(m => allMembers.set(String(m.id), m.name||String(m.id))));
+  COMBOS.forEach(c => (AA[c].members||[]).forEach(m => allMembers.set(String(m.id), String(m.id))));
   const missIds = new Set(missing.map(x=>String(x.aid)));
-  const gotNames = [...allMembers].filter(([aid])=>!missIds.has(aid)).map(([aid,name])=>name);
-  const gotHtml = (gotNames.length?gotNames:Array.from({length:gotCnt},(_,i)=>'成员'+i)).slice(0,80)
-    .map(n=>`<span class="rd-tag-ok">✓ ${esc(n)}</span>`).join('  ')||'<span class="muted">—</span>';
+  const gotAids = [...allMembers].filter(([aid])=>!missIds.has(aid)).map(([aid])=>aid);
+  const gotHtml = (gotAids.length?gotAids:Array.from({length:gotCnt},(_,i)=>'?'+i)).slice(0,80)
+    .map(aid=>`<span class="rd-tag-ok">✓ ${esc(aid)}</span>`).join('  ')||'<span class="muted">—</span>';
   const missHtml = missing.slice(0,80)
-    .map(x=>`<span class="rd-tag-bad">✗ ${esc(x.name||x.aid)}${x.reason?'（'+esc(String(x.reason).slice(0,18))+'）':''}</span>`).join('  ')||'<span class="muted">—</span>';
+    .map(x=>`<span class="rd-tag-bad">✗ ${esc(String(x.aid))}</span>`).join('  ')||'<span class="muted">—</span>';
   const dv = READY.delayed_varieties;
   const dvHtml = (dv && Object.keys(dv).length) ? `<div style="margin-top:6px"><span class="muted">延迟品种：</span>${Object.keys(dv).slice(0,8).map(v=>esc(v)).join('、')}</div>` : '';
   return `<div class="ready-detail" id="ready-detail">
