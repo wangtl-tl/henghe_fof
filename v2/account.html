@@ -1340,8 +1340,8 @@ function rAlignDetail(c){
 function setAlignSel(c){ alignSel = (alignSel===c?null:c); render(); }
 function setAlignFilter(f){ alignFilter=f; render(); }
 function setAlignAuto(){ alignAuto=!alignAuto; render(); }
-// 持仓对齐页自动刷新（仅该 Tab 激活时，读 /api/state 内存态）
-setInterval(()=>{ if(alignAuto && mainTab==='align') tryLive(); }, 60000);
+// 持仓对齐页自动刷新（仅该 Tab 激活时，读 /api/state 内存态；3 分钟刷新一次，避免过度请求）
+setInterval(()=>{ if(alignAuto && mainTab==='align') tryLive(); }, 180000);
 function svgSimLine(ts, vals){
   if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
   const w=720,h=200,pad=30,n=vals.length;
