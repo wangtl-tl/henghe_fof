@@ -157,6 +157,20 @@ svg{display:block;width:100%;height:auto}
 .rd-list{max-height:150px;overflow-y:auto;background:#f6f8fa;border:0.5px solid var(--line);border-radius:8px;padding:8px 10px;line-height:1.8;font-size:12px;margin-top:4px}
 .rd-tag-ok{color:var(--down)}
 .rd-tag-bad{color:var(--up)}
+.dual-caliber-bar{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.dual-caliber-bar .cb{flex:1;min-width:240px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;border-left:3px solid var(--blue)}
+.dual-caliber-bar .cb.sim{border-left-color:#c9871b}
+.dual-caliber-bar .cb b{display:block;font-size:13px;font-weight:600;margin-bottom:3px}
+.dual-caliber-bar .cb span{font-size:12px;color:var(--sub)}
+.dual .nav{color:var(--blue)} .dual .sim{color:#c9871b}
+.dual{display:flex;gap:10px;align-items:baseline;font-size:18px;font-weight:600}
+.dual-sub{display:flex;gap:10px;font-size:11px;color:var(--weak);margin-top:2px}
+.dual-sub .sim{color:#c9871b}
+.warn-tag{display:inline-block;background:#fff4e0;color:#9a6a12;border:1px solid #f0c97a;border-radius:8px;padding:1px 8px;font-size:11px;margin-left:6px}
+.legend{font-size:12px;color:var(--sub)} .legend.nav{color:var(--blue)} .legend.sim{color:#c9871b}
+.dd-compare{display:flex;flex-direction:column;gap:10px}
+.risk-table th:nth-child(2){color:var(--blue)} .risk-table th:nth-child(3){color:#c9871b}
+.risk-table td.sim{color:#c9871b}
 </style>
 </head>
 <body>
@@ -224,6 +238,15 @@ function fmtHHMM(s){
 function latestSettleDate(c){
   const list = (window.__SETL && window.__SETL[c]) || [];
   return (list[0] && list[0].settle_date) || null;
+}
+// 2026-08-30：三页统一数据日标签 = "结算 X · 就绪 Y"（结算=最新结算日，就绪=missed_data 数据日）
+function dataDayLabel(c){
+  const settle = latestSettleDate(c);
+  const ready = (READY && READY.date) || null;
+  if(settle && ready && settle !== ready) return `结算 ${esc(settle)} · 就绪 ${esc(ready)}`;
+  if(settle) return `结算 ${esc(settle)}`;
+  if(ready) return `就绪 ${esc(ready)}`;
+  return '—';
 }
 
 // ---------- 组合切换 ----------
@@ -316,6 +339,7 @@ let SNAP = null;    // 日记录每日快照（/api/daily_snapshots）
 let CALIB_COMBO = null; // 数据校准 tab 当前展示组合（跳转后保持）
 let CALIB_DATE = '';    // 数据校准 tab 历史日期（空=今天实时）
 let TODAY_FILLS = {};   // 2026-08-30：{combo: Set(symbol)} 今日真实成交（/api/today_trades）
+let TODAY_TRADES = {};  // 2026-08-30：{combo: [trade,...]} 今日成交明细（持仓分析"成交记录"按日过滤）
 async function tryLive(){
   // 2026-08-30：原实现 7 个 fetch 串行 await（行 320-360 顺序）→ 换组合时总耗时 = sum(各 fetch 时间)，很卡。
   // 改为 Promise.allSettled 并行所有 fetch；任意一个失败不影响其他（用 .catch 单独处理）。
@@ -341,9 +365,10 @@ async function tryLive(){
   if(ac.status==='fulfilled' && ac.value) ACTIONS = ac.value; else ACTIONS = null;
   if(pl.status==='fulfilled' && pl.value) POLL = pl.value; else POLL = null;
   if(sl.status==='fulfilled' && sl.value && sl.value.settlements){ window.__SETL=window.__SETL||{}; window.__SETL[c]=sl.value.settlements; }
+  if(sl.status==='fulfilled' && sl.value && sl.value.sim_metrics){ window.__SIMMETRICS=window.__SIMMETRICS||{}; window.__SIMMETRICS[c]=sl.value.sim_metrics; window.__SIMDD=window.__SIMDD||{}; window.__SIMDD[c]=sl.value.sim_drawdown||[]; window.__SIMDAYS=window.__SIMDAYS||{}; window.__SIMDAYS[c]=sl.value.sim_sample_days; window.__SIMINSUF=window.__SIMINSUF||{}; window.__SIMINSUF[c]=sl.value.sim_insufficient; }
   if(ad.status==='fulfilled' && ad.value && ad.value.combo) CALIB = ad.value; else CALIB = null;
   if(ds.status==='fulfilled' && ds.value && ds.value.date) SNAP = ds.value; else SNAP = null;
-  if(tf.status==='fulfilled' && tf.value && tf.value.trades) TODAY_FILLS[c] = new Set(tf.value.trades.map(x=>x.symbol));
+  if(tf.status==='fulfilled' && tf.value && tf.value.trades){ TODAY_FILLS[c] = new Set(tf.value.trades.map(x=>x.symbol)); TODAY_TRADES[c] = tf.value.trades; }
   render();
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
@@ -448,8 +473,11 @@ function dataDayCard(){
   const fbTip = (READY&&READY.is_fallback&&READY.fallback_date)
     ? `<div style="margin-top:4px;font-size:11px;color:#ba7517">⚠ 今日未检查，显示的是 ${esc(READY.fallback_date)} 数据 · 19:30 起轮询自动更新为今日</div>` : '';
   const liveTag = LIVE?'实时':'快照';
+  // 2026-08-30：数据日叠加"结算 X · 就绪 Y"（三页统一口径）
+  const stl = latestSettleDate(combo);
+  const ddExtra = (stl && stl !== day) ? ` · 结算 ${esc(stl)}` : '';
   return `<div class="data-day-card">
-    <div class="dd-item"><span class="dd-label">📅 数据日</span><span class="dd-value">${esc(day)}<span style="font-size:12px;color:var(--weak)"> ${esc(wd)}</span></span></div>
+    <div class="dd-item"><span class="dd-label">📅 数据日</span><span class="dd-value">${esc(day)}${esc(ddExtra)}<span style="font-size:12px;color:var(--weak)"> ${esc(wd)}</span></span></div>
     <div class="dd-item"><span class="dd-label">📡 轮询状态（${liveTag} · 每15分钟）</span><span class="dd-value sm" style="color:${stCls}">${stTxt}${chkAt}</span></div>
     <div class="dd-progress">
       <div class="dd-txt"><span>取数进度</span><span class="dd-count">${got} / ${total||'—'} · ${pct}%</span></div>
@@ -712,26 +740,58 @@ function rRisk(D){
   const dd = pf.drawdown_values||[];
   const nd = pf.nav_dates||[];
   const m = D.metrics||{}, st = D.stress_test||{};
+  const sm = (window.__SIMMETRICS && window.__SIMMETRICS[combo]) || null;
+  const simdd = (window.__SIMDD && window.__SIMDD[combo]) || [];
+  const simDays = (window.__SIMDAYS && window.__SIMDAYS[combo]) || 0;
+  const simInsuf = (window.__SIMINSUF && window.__SIMINSUF[combo]) || false;
+  const setlList = (window.__SETL && window.__SETL[combo]) || [];
+  const navRange = (nd.length>=2) ? (nd[0]+' ~ '+nd[nd.length-1]) : '—';
+  const simRange = (setlList.length>=1) ? ((setlList.length>=2?setlList[setlList.length-1].settle_date+' ~ ':'')+setlList[0].settle_date) : '—';
+  const navDays = nd.length;
+  const simWarn = simInsuf ? `<span class="warn-tag">⚠ 样本不足（${simDays}日）</span>` : '';
+  const f2 = (v)=> (v===null||v===undefined||isNaN(v)) ? '—' : fmt(v,2);
+  const p1 = (v)=> (v===null||v===undefined||isNaN(v)) ? '—' : pct(v);
+  const dual = (label, navV, simV, fmtFn) => `
+    <div class="card"><div class="label">${label}</div>
+      <div class="dual"><span class="nav">${fmtFn(navV)}</span><span class="sim">${fmtFn(simV)}</span></div>
+      <div class="dual-sub"><span class="nav">净值</span><span class="sim">模拟</span></div>
+    </div>`;
   const cards = [
-    ['最大回撤', pct(m.max_drawdown), ''],
-    ['夏普比率', fmt(m.sharpe,2), ''],
-    ['收益回撤比', fmt(m.return_dd_ratio,2), ''],
-    ['年化波动', pct(m.annual_volatility), ''],
-    ['VaR95', pct(st.var95), '日度'],
+    dual('最大回撤', m.max_drawdown, sm&&sm.max_drawdown, p1),
+    dual('夏普比率', m.sharpe, sm&&sm.sharpe, f2),
+    dual('收益回撤比', m.return_dd_ratio, sm&&sm.return_dd_ratio, f2),
+    dual('年化波动', m.annual_volatility, sm&&sm.annual_volatility, p1),
+    dual('VaR95', st.var95, sm&&sm.var95, p1),
   ];
+  const trow = (name, navV, simV, fmtFn) => `<tr><td>${name}</td><td class="down">${fmtFn(navV)}</td><td class="down sim">${fmtFn(simV)}</td></tr>`;
   const rows = [
-    ['VaR 95%', pct(st.var95), '历史模拟，日收益分布分位'],
-    ['VaR 99%', pct(st.var99), '极端损失分位'],
-    ['CVaR 95%', pct(st.cvar95), '损失超过 VaR95 的平均损失'],
-    ['CVaR 99%', pct(st.cvar99), '损失超过 VaR99 的平均损失'],
-    ['最大日亏损', pct(st.max_daily_loss), '历史最大单日回撤'],
-    ['胜率', pct(m.win_rate), '日收益为正的天数占比'],
+    trow('最大回撤', m.max_drawdown, sm&&sm.max_drawdown, p1),
+    trow('夏普比率', m.sharpe, sm&&sm.sharpe, f2),
+    trow('收益回撤比', m.return_dd_ratio, sm&&sm.return_dd_ratio, f2),
+    trow('年化波动', m.annual_volatility, sm&&sm.annual_volatility, p1),
+    trow('VaR 95%', st.var95, sm&&sm.var95, p1),
+    trow('VaR 99%', st.var99, sm&&sm.var99, p1),
+    trow('CVaR 95%', st.cvar95, sm&&sm.cvar95, p1),
+    trow('CVaR 99%', st.cvar99, sm&&sm.cvar99, p1),
+    trow('最大日亏损', st.max_daily_loss, sm&&sm.max_daily_loss, p1),
+    trow('胜率', m.win_rate, sm&&sm.win_rate, p1),
   ];
+  const simLabels = simdd.map((_,i)=> i+1);
   return `
-  <div class="cards">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}</div>
-  <div class="panel"><h3>动态回撤曲线 <span class="hint">净值回撤（%）</span></h3>${svgLine(nd, dd.map(v=>-Math.abs(v||0)), 720, 240, DOWN)}</div>
-  <div class="panel"><h3>风险指标明细</h3>
-    <table><tr><th>指标</th><th>数值</th><th>说明</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td class="down">${r[1]}</td><td class="muted">${r[2]}</td></tr>`).join('')}</table>
+  <div class="dual-caliber-bar">
+    <div class="cb nav"><b>口径A · 组合净值</b><span>${navRange} · 样本 ${navDays} 日</span></div>
+    <div class="cb sim"><b>口径B · 模拟账户权益</b><span>${simRange} · 样本 ${simDays} 日 ${simWarn}</span></div>
+  </div>
+  <div class="cards">${cards.join('')}</div>
+  <div class="panel"><h3>动态回撤曲线对比 <span class="hint">净值回撤 vs 模拟权益回撤（%）</span></h3>
+    <div class="dd-compare">
+      <div><span class="legend nav">● 净值回撤</span>${svgLine(nd, dd.map(v=>-Math.abs(v||0)), 700, 200, DOWN)}</div>
+      <div><span class="legend sim">● 模拟权益回撤</span>${simdd.length>1?svgLine(simLabels, simdd.map(v=>-Math.abs(v||0)), 700, 200, DOWN):'<div class="muted" style="padding:20px">样本不足，暂无曲线</div>'}</div>
+    </div>
+  </div>
+  <div class="panel"><h3>风险指标明细 <span class="hint">净值口径 vs 模拟账户口径</span></h3>
+    <table class="risk-table"><tr><th>指标</th><th>净值口径</th><th>模拟账户</th></tr>${rows.join('')}</table>
+    ${simInsuf?'<div class="mini-legend"><span class="warn-tag">⚠ 模拟账户样本仅 '+simDays+' 日，VaR/CVaR/夏普等统计意义有限，随交易日累积自动变可靠</span></div>':''}
   </div>`;
 }
 
@@ -791,8 +851,8 @@ function rPositions(D){
       <td class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))}万</td>
       <td>${fmt(wan(p.margin,0),0)}万</td></tr>`;
   }).join('');
-  // 成交记录（最近 30 笔）
-  const trades = (sim.trades||[]).slice(-30).reverse();
+  // 成交记录（2026-08-30：今日真实成交优先，与动作状态口径一致；今日无则显示历史最近 30 笔）
+  const trades = todayTr.length ? todayTr : (sim.trades||[]).slice(-30).reverse();
   const tradeRows = trades.map(t=>`<tr>
     <td>${esc(t.tstr||'')}</td><td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
@@ -806,15 +866,18 @@ function rPositions(D){
   // 时段灯
   const seg = segLabel();
   const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
-  // 2026-08-30：数据日用最新结算日（避免用 embedded sim 的旧值导致显示 8.27）
+  // 2026-08-30：数据日 = 结算日 + 就绪日（三页统一口径）
   const ddTxt = latestSettleDate(combo) || (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
-  // 数据新鲜度：持仓 → LIVE.state_updated_at（TqSim 推送，每 3s wait_update 一次）；成交 → 末笔 tstr；净值 → NAV 最后时间（5min 一次）
+  const ddLabel = dataDayLabel(combo);
+  // 数据新鲜度：持仓 → LIVE.state_updated_at（TqSim 推送，每 3s wait_update 一次）；成交 → 今日明细；净值 → NAV 最后时间（10min 一次）
   const stateAt = (LIVE&&LIVE[combo]&&LIVE[combo].state_updated_at) || '';
+  // 2026-08-30：成交记录按"今日真实成交"（/api/today_trades）优先，与动作状态口径一致；今日无则 fallback 历史 30 笔
+  const todayTr = (TODAY_TRADES && TODAY_TRADES[combo]) || [];
   const lastTrade = (sim.trades && sim.trades.length) ? sim.trades[sim.trades.length-1] : null;
   const lastTradeAt = lastTrade ? fmtHHMM(lastTrade.tstr||'') : '—';
   const updLbl = stateAt ? `实时（TqSim 推送）· 更新于 ${esc(fmtHHMM(stateAt))}`
                               : `${esc(liveTag.replace(/· /,'').replace(/<[^>]*>?/gm,''))} · 暂无刷新（休市/重启中）`;
-  const tradeUpdLbl = lastTrade ? `实时 · 最新成交 ${esc(lastTradeAt)}` : '实时 · 当日暂无成交';
+  const tradeUpdLbl = todayTr.length ? `今日成交 ${todayTr.length} 笔 · 最后 ${esc(fmtHHMM(lastTrade.tstr||''))}` : '今日暂无成交 · 显示最近历史 30 笔';
   const navTs = (navT.length ? navT[navT.length-1]/1000 : null) || (LIVE_NAV[combo]&&LIVE_NAV[combo].t&&LIVE_NAV[combo].t.length ? LIVE_NAV[combo].t[Math.max(0,LIVE_NAV[combo].t.length-1)] : null);
   return `
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
@@ -822,7 +885,7 @@ function rPositions(D){
     <div class="chips-row">${comboChips}</div>
   </div>
   <div class="grid-3">
-    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 数据日 ${esc(ddTxt)} · ${esc(updLbl)} · 点击表头排序</span></h3>
+    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 数据日 ${esc(ddLabel)} · ${esc(updLbl)} · 点击表头排序</span></h3>
       <div class="pos-table-wrap"><table>
         <tr>
           <th class="sortable" onclick="setPosSort('symbol')">${ind('symbol','合约')}</th>
@@ -835,7 +898,7 @@ function rPositions(D){
         </tr>
         ${posRows||'<tr><td colspan="7" class="empty">暂无持仓</td></tr>'}</table></div>
     </div>
-    <div class="panel"><h3>成交记录 <span class="hint">最近 ${trades.length} 笔 · 数据日 ${esc(ddTxt)} · ${esc(tradeUpdLbl)}</span></h3>
+    <div class="panel"><h3>成交记录 <span class="hint">${todayTr.length?'今日成交 '+todayTr.length+' 笔':'最近 '+trades.length+' 笔（今日 0）'} · 数据日 ${esc(ddLabel)} · ${esc(tradeUpdLbl)}</span></h3>
       <div class="trade-table-wrap"><table>
         <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>价格</th><th>手续费</th></tr>
         ${tradeRows||'<tr><td colspan="7" class="empty">暂无成交</td></tr>'}</table></div>
@@ -1177,8 +1240,25 @@ function rPrePlan(){
     const a2 = (p&&p.actions)||[];
     if(!a2.length && !(p&&p.combo_type)) return null;
     todo++; acts+=a2.length; vol+=(p.total_vol||0); est+=(p.est_margin||0);
-    let buy=0,sell=0,add=0,cut=0;
-    a2.forEach(a=>{const k=actionClass(a).key; if(k==='buy')buy++; else if(k==='sell')sell++; else if(k==='add')add++; else cut++;});
+    // 2026-08-30 方案D：多单/空单净变化（按方向聚合）
+    // 多单变化 = 买开(加多) − 卖平(减多)；空单变化 = 卖开(加空) − 买平(减空)
+    let buyOpen=0, sellClose=0, sellOpen=0, buyClose=0;
+    a2.forEach(a=>{
+      const v = a.volume||0, dir = a.direction, off = a.offset;
+      if(dir==='BUY' && off==='OPEN') buyOpen += v;
+      else if(dir==='SELL' && off==='CLOSE') sellClose += v;
+      else if(dir==='SELL' && off==='OPEN') sellOpen += v;
+      else if(dir==='BUY' && off==='CLOSE') buyClose += v;
+    });
+    const multiChg = buyOpen - sellClose;   // 多单净变化
+    const shortChg = sellOpen - buyClose;   // 空单净变化
+    const chgCell = (part, chg, upPart, dnPart) => {
+      if(!part) return '<td style="text-align:right" class="muted">—</td>';
+      const cls = chg>0 ? 'up' : (chg<0 ? 'down' : '');
+      const sign = chg>0 ? '+' : (chg<0 ? '-' : '');
+      const dist = (upPart||dnPart) ? `<span class="muted" style="font-size:11px"> 加${upPart||0}·减${dnPart||0}</span>` : '';
+      return `<td style="text-align:right" class="${cls}">${sign}${fmt(Math.abs(chg))} 手${dist}</td>`;
+    };
     // 类型 + 数据状态
     const isNet = p.combo_type!=='single';
     const ts = p.trader_status||{got:0,total:0};
@@ -1197,11 +1277,9 @@ function rPrePlan(){
       <td>${esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''))}</td>
       <td>${typeChip}</td>
       <td>${stChip}</td>
-      <td style="text-align:right;color:var(--up)">${buy||'—'}</td>
-      <td style="text-align:right;color:var(--down)">${sell||'—'}</td>
-      <td style="text-align:right;color:#ba7517">${add||'—'}</td>
-      <td style="text-align:right;color:#a06000">${cut||'—'}</td>
-      <td style="text-align:right">${fmt(vol)}</td>
+      ${chgCell(buyOpen||sellClose, multiChg, buyOpen, sellClose)}
+      ${chgCell(sellOpen||buyClose, shortChg, sellOpen, buyClose)}
+      <td style="text-align:right">${fmt(p.total_vol||0)}</td>
       <td style="text-align:right">${estHtml}</td>
       <td style="text-align:center"><button style="font-size:11px;border:0.5px solid var(--line);background:#fff;color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer" onclick="event.stopPropagation();jumpToCalibrate('${c}')">校准</button></td>
     </tr>`;
@@ -1215,18 +1293,18 @@ function rPrePlan(){
     <h3>① 盘前计划 <span class="hint">开盘前该做的 · 计划生成 <b>${esc(planDate)}</b> · 点击行查看详情弹窗 · 右列「校准」进入数据校准页</span></h3>
     <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
       <div class="card"><div class="label">待执行组合</div><div class="value">${todo} / 10</div><div class="sub">有差异待补单</div></div>
-      <div class="card"><div class="label">总动作</div><div class="value">${acts} 笔</div><div class="sub">买开/卖平/加/减</div></div>
+      <div class="card"><div class="label">总动作</div><div class="value">${acts} 笔</div><div class="sub">多单/空单净变化合计</div></div>
       <div class="card"><div class="label">预计占用</div><div class="value">¥${(est/1e4).toFixed(0)}万</div><div class="sub">数据齐全组合合计</div></div>
       <div class="card"><div class="label">下次执行</div><div class="value" style="font-size:16px">21:00</div><div class="sub">夜盘开盘 · ${fmtCd(21,0)}</div></div>
     </div>
     ${ACTIONS ? `<table>
-      <tr><th>组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">买开</th><th style="text-align:right">卖平</th><th style="text-align:right">加仓</th><th style="text-align:right">减仓</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th><th style="text-align:center">校准</th></tr>
-      ${rows||'<tr><td colspan="10" class="empty">暂无待执行动作（全部已对齐）</td></tr>'}</table>
+      <tr><th>组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">多单变化</th><th style="text-align:right">空单变化</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th><th style="text-align:center">校准</th></tr>
+      ${rows||'<tr><td colspan="8" class="empty">暂无待执行动作（全部已对齐）</td></tr>'}</table>
       <div class="mini-legend">
         <span><span class="legend-chip" style="background:#e6f1fb;color:#185fa5">净持仓</span> 数据必须齐全才能操作</span>
         <span><span class="legend-chip" style="background:#faeeda;color:#854f0b">单盘手</span> 有数据就部分跟</span>
         <span><span class="legend-chip" style="background:#fde8e8;color:#cf222e">⚠️ 未取齐</span> 禁止操作 · 等数据全</span>
-        <span class="muted">点击行 → 详情弹窗（盘手明细/目标vs当前/今晚动作）</span>
+        <span class="muted">多单变化 = 买开(加多) − 卖平(减多) · 空单变化 = 卖开(加空) − 买平(减空) · 点击行 → 详情弹窗</span>
       </div>`
       : '<div class="empty">动作计划需连接实时服务生成（本地访问自动加载）</div>'}
   </div>`;
@@ -1616,8 +1694,10 @@ function rCalibrate(){
   const c = CALIB_COMBO || combo;
   const data = calibData();
   const d = AA[c]||{};
-  // 组合切换：2026-08-30 只设 CALIB_COMBO（局部），不再改全局 combo（避免影响持仓分析等 tab）
-  const chips = COMBOS.map(x=>`<button class="chip-btn ${x===c?'on':''}" onclick="CALIB_COMBO='${x}';CALIB_DATE='';tryLive()">${esc(((AA[x]||{}).name||x).replace('组合','').replace('全能主','').replace('优质',''))}</button>`).join('');
+  // 组合切换：2026-08-30 只设 CALIB_COMBO（局部），不再改全局 combo（避免影响持仓分析等 tab）。
+  // 末尾 render() 立即刷新 chips 高亮（让用户立刻看到已切换），data 仍是旧值会显示"暂无该组合"占位，
+  // 等 tryLive 完成后再 render 一次填新数据。
+  const chips = COMBOS.map(x=>`<button class="chip-btn ${x===c?'on':''}" onclick="CALIB_COMBO='${x}';CALIB_DATE='';render();tryLive()">${esc(((AA[x]||{}).name||x).replace('组合','').replace('全能主','').replace('优质',''))}</button>`).join('');
   const histTag = CALIB_DATE ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(CALIB_DATE)} 历史快照</span>` : '';
   if(!data){
     return `<div class="ready-bar">📡 ${readinessHtml()}</div>
@@ -1670,7 +1750,7 @@ function rCalibrate(){
   return `
   <div class="ready-bar">📡 ${readinessHtml()}</div>
   <div class="panel" style="padding:12px 16px">
-    <h3>数据校准 <span class="hint">原持仓 → 净持仓 → 计划 全链路比对 · 数据日 ${esc(data.date||'—')} · 跟投比例 ${((data.scale||0)*100).toFixed(2)}%</span> ${histTag}</h3>
+    <h3>数据校准 <span class="hint">原持仓 → 净持仓 → 计划 全链路比对 · 数据日 ${CALIB_DATE ? esc(data.date||'—') : esc(dataDayLabel(c))} · 跟投比例 ${((data.scale||0)*100).toFixed(2)}%</span> ${histTag}</h3>
     <div class="chips-row">${chips}</div>
   </div>
   <div class="data-day-card" style="margin-bottom:12px">
@@ -1738,11 +1818,11 @@ function rDailyRecord(){
   // ① 盘前计划 4 卡片
   const cards = [
     ['待执行组合', `${summary.todo||0} / 10`, '有差异待补单'],
-    ['总动作', `${summary.acts||0} 笔`, '买开/卖平/加/减'],
+    ['总动作', `${summary.acts||0} 笔`, '多单/空单净变化合计'],
     ['预计占用', `¥${((summary.est||0)/1e4).toFixed(0)}万`, '数据齐全组合合计'],
     ['计划生成', `<span style="font-size:14px">${esc(String(summary.plan_built_at||'—').slice(11,16)||'—')}</span>`, `更新于 ${esc(String(snap.updated_at||'—').slice(11,19))}`],
   ];
-  // ① 盘前计划 表格（按 combo_metrics，与 rPrePlan 同构）
+  // ① 盘前计划 表格（按 combo_metrics，与 rPrePlan 同构：方案D 多单/空单变化）
   const rows = metrics.map(p=>{
     const ts = p.trader_status||{got:0,total:0};
     const ready = !!p.data_ready;
@@ -1757,17 +1837,28 @@ function rDailyRecord(){
       ? '<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">净持仓</span>'
       : '<span class="legend-chip" style="background:#faeeda;color:#854f0b">单盘手</span>';
     const a2 = p.actions || [];
-    let buy=0,sell=0,add=0,cut=0;
-    a2.forEach(a=>{const k=actionClass(a).key; if(k==='buy')buy++; else if(k==='sell')sell++; else if(k==='add')add++; else cut++;});
+    let buyOpen=0, sellClose=0, sellOpen=0, buyClose=0;
+    a2.forEach(a=>{
+      const v = a.volume||0, dir = a.direction, off = a.offset;
+      if(dir==='BUY' && off==='OPEN') buyOpen += v;
+      else if(dir==='SELL' && off==='CLOSE') sellClose += v;
+      else if(dir==='SELL' && off==='OPEN') sellOpen += v;
+      else if(dir==='BUY' && off==='CLOSE') buyClose += v;
+    });
+    const chgCell = (part, chg, upPart, dnPart) => {
+      if(!part) return '<td style="text-align:right" class="muted">—</td>';
+      const cls = chg>0 ? 'up' : (chg<0 ? 'down' : '');
+      const sign = chg>0 ? '+' : (chg<0 ? '-' : '');
+      const dist = (upPart||dnPart) ? `<span class="muted" style="font-size:11px"> 加${upPart||0}·减${dnPart||0}</span>` : '';
+      return `<td style="text-align:right" class="${cls}">${sign}${fmt(Math.abs(chg))} 手${dist}</td>`;
+    };
     const estHtml = (p.combo_type && !ready) ? '<span class="muted">¥—</span>' : `<span class="muted">¥${((p.est_margin||0)/1e4).toFixed(0)}万</span>`;
     return `<tr>
       <td>${esc((p.name||p.combo).replace('组合','').replace('全能主','').replace('优质',''))}</td>
       <td>${typeChip}</td>
       <td>${stChip}</td>
-      <td style="text-align:right;color:var(--up)">${buy||'—'}</td>
-      <td style="text-align:right;color:var(--down)">${sell||'—'}</td>
-      <td style="text-align:right;color:#ba7517">${add||'—'}</td>
-      <td style="text-align:right;color:#a06000">${cut||'—'}</td>
+      ${chgCell(buyOpen||sellClose, buyOpen-sellClose, buyOpen, sellClose)}
+      ${chgCell(sellOpen||buyClose, sellOpen-buyClose, sellOpen, buyClose)}
       <td style="text-align:right">${fmt(p.total_vol||0)}</td>
       <td style="text-align:right">${estHtml}</td>
     </tr>`;
@@ -1802,8 +1893,8 @@ function rDailyRecord(){
         ${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}
       </div>
       <div class="trade-table-wrap" style="max-height:380px"><table>
-        <tr><th style="text-align:left">组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">买开</th><th style="text-align:right">卖平</th><th style="text-align:right">加仓</th><th style="text-align:right">减仓</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th></tr>
-        ${rows||'<tr><td colspan="9" class="empty">该日无盘前计划数据</td></tr>'}
+        <tr><th style="text-align:left">组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">多单变化</th><th style="text-align:right">空单变化</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th></tr>
+        ${rows||'<tr><td colspan="7" class="empty">该日无盘前计划数据</td></tr>'}
       </table></div>
     </div>
     <div class="panel">
@@ -1854,9 +1945,14 @@ function changePage(d){
 }
 
 // ---------- 事件绑定 ----------
+let _lastTabRefresh = 0;
 document.getElementById('mainTabs').addEventListener('click', e=>{
   const t = e.target.closest('.tab'); if(!t) return;
-  mainTab = t.dataset.tab; page = 1; render();
+  mainTab = t.dataset.tab; page = 1;
+  render();
+  // 2026-08-30：切 tab 立即刷新（避免显示 60s 前的旧数据）；防抖 1s 内不重复拉
+  const now = Date.now();
+  if(now - _lastTabRefresh > 1000){ _lastTabRefresh = now; tryLive(); }
 });
 initComboSel();
 render();
