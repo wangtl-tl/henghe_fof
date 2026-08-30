@@ -183,6 +183,8 @@ svg{display:block;width:100%;height:auto}
     <button class="tab" data-tab="positions">持仓分析</button>
     <button class="tab" data-tab="history">历史数据</button>
     <button class="tab" data-tab="align">持仓对齐</button>
+    <button class="tab" data-tab="calibrate">数据校准</button>
+    <button class="tab" data-tab="daily">日记录</button>
   </div>
   <div id="mainContent"></div>
   <div class="footer">数据来源：衡合FOF跟投系统 · 模拟账户数据与本组合独立采集 · 仅供内部参考，不构成投资建议</div>
@@ -208,6 +210,21 @@ const pct = v => v===null||v===undefined||isNaN(v) ? '—' : (Number(v)).toFixed
 const pnlCls = v => v>0 ? 'up' : (v<0 ? 'down' : '');
 const pnlTxt = v => (v>0?'+':'') + fmt(v);
 const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// 把 "2026-08-29 16:04:00" 字符串或 Unix 秒（10位）转 HH:MM；空值返回 '—'
+function fmtHHMM(s){
+  if(s===null||s===undefined||s==='') return '—';
+  if(typeof s==='number'){
+    const d = new Date(s>1e12?s:s*1000);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  const m = String(s).match(/(\d{2}):(\d{2})/);
+  return m ? m[1]+':'+m[2] : '—';
+}
+// 2026-08-30：取某组合最新一次结算日期（来自 /api/settlement 实时列表，tryLive 已写入 window.__SETL[combo]）
+function latestSettleDate(c){
+  const list = (window.__SETL && window.__SETL[c]) || [];
+  return (list[0] && list[0].settle_date) || null;
+}
 
 // ---------- 组合切换 ----------
 function initComboSel(){
@@ -294,34 +311,42 @@ let READY = null;   // 数据就绪
 let LIVE_NAV = {};  // {combo: nav曲线}
 let ACTIONS = null; // {combo: 盘前动作计划}
 let POLL = null;    // 跟投数据轮询状态（19:30 起每 15 分钟）
+let CALIB = null;   // 数据校准三段式数据（/api/align_detail）
+let SNAP = null;    // 日记录每日快照（/api/daily_snapshots）
+let CALIB_COMBO = null; // 数据校准 tab 当前展示组合（跳转后保持）
+let CALIB_DATE = '';    // 数据校准 tab 历史日期（空=今天实时）
+let TODAY_FILLS = {};   // 2026-08-30：{combo: Set(symbol)} 今日真实成交（/api/today_trades）
 async function tryLive(){
-  try{
-    const r = await fetch('http://127.0.0.1:18081/api/state?_='+Date.now(), {cache:'no-store'});
-    if(r.ok) LIVE = await r.json();
-  }catch(e){ LIVE = null; }
-  try{
-    const r2 = await fetch('http://127.0.0.1:18081/api/readiness?_='+Date.now(), {cache:'no-store'});
-    if(r2.ok) READY = await r2.json();
-  }catch(e){}
-  try{
-    const r3 = await fetch('http://127.0.0.1:18081/api/nav?combo='+combo, {cache:'no-store'});
-    if(r3.ok){ const nd = await r3.json(); if(nd && nd.t) LIVE_NAV[combo] = nd; }
-  }catch(e){}
-  try{
-    const r4 = await fetch('http://127.0.0.1:18081/api/actions?_='+Date.now(), {cache:'no-store'});
-    if(r4.ok) ACTIONS = await r4.json();
-  }catch(e){ ACTIONS = null; }
-  try{
-    const r5 = await fetch('http://127.0.0.1:18081/api/poll?_='+Date.now(), {cache:'no-store'});
-    if(r5.ok) POLL = await r5.json();
-  }catch(e){ POLL = null; }
-  // 实时拉结算单（覆盖 embedded，让"历史数据"tab 永远是最新的；DB 里今天之前的也都在）
-  try{
-    const r6 = await fetch('http://127.0.0.1:18081/api/settlement?combo='+combo, {cache:'no-store'});
-    if(r6.ok){ const sd = await r6.json(); if(sd && sd.settlements){ window.__SETL = window.__SETL||{}; window.__SETL[combo] = sd.settlements; render(); } }
-  }catch(e){}
+  // 2026-08-30：原实现 7 个 fetch 串行 await（行 320-360 顺序）→ 换组合时总耗时 = sum(各 fetch 时间)，很卡。
+  // 改为 Promise.allSettled 并行所有 fetch；任意一个失败不影响其他（用 .catch 单独处理）。
+  // 末尾统一 render 一次（去掉原 r6 中间 render()）。
+  const c = combo;
+  const cc = CALIB_COMBO || c;
+  const t = todayStr();
+  const f = (url) => fetch(url, {cache:'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null);
+  const [s, r, n, ac, pl, sl, ad, ds, tf] = await Promise.allSettled([
+    f('http://127.0.0.1:18081/api/state?_='+Date.now()),
+    f('http://127.0.0.1:18081/api/readiness?_='+Date.now()),
+    f('http://127.0.0.1:18081/api/nav?combo='+c),
+    f('http://127.0.0.1:18081/api/actions?_='+Date.now()),
+    f('http://127.0.0.1:18081/api/poll?_='+Date.now()),
+    f('http://127.0.0.1:18081/api/settlement?combo='+c),
+    f('http://127.0.0.1:18081/api/align_detail?combo='+cc+(CALIB_DATE?'&date='+CALIB_DATE:'')),
+    f('http://127.0.0.1:18081/api/daily_snapshots?date='+t),
+    f('http://127.0.0.1:18081/api/today_trades?combo='+c),
+  ]);
+  if(s.status==='fulfilled' && s.value) LIVE = s.value; else LIVE = null;
+  if(r.status==='fulfilled' && r.value) READY = r.value;
+  if(n.status==='fulfilled' && n.value && n.value.t) LIVE_NAV[c] = n.value;
+  if(ac.status==='fulfilled' && ac.value) ACTIONS = ac.value; else ACTIONS = null;
+  if(pl.status==='fulfilled' && pl.value) POLL = pl.value; else POLL = null;
+  if(sl.status==='fulfilled' && sl.value && sl.value.settlements){ window.__SETL=window.__SETL||{}; window.__SETL[c]=sl.value.settlements; }
+  if(ad.status==='fulfilled' && ad.value && ad.value.combo) CALIB = ad.value; else CALIB = null;
+  if(ds.status==='fulfilled' && ds.value && ds.value.date) SNAP = ds.value; else SNAP = null;
+  if(tf.status==='fulfilled' && tf.value && tf.value.trades) TODAY_FILLS[c] = new Set(tf.value.trades.map(x=>x.symbol));
   render();
 }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
 function liveSim(D){
   const st = LIVE && LIVE[combo];
   if(!st) return D.sim;
@@ -344,19 +369,32 @@ function segLabel(){
   if(hm>=15*60 && hm<21*60) return {t:'日盘已收盘', c:'#ba7517'};
   return {t:'日盘交易中', c:'#1a7f37'};
 }
+// 2026-08-29：就绪判定统一（后端 ready 是数字，不能用 ===true）
+function allReady(r){
+  if(!r) return false;
+  if(r.missing_count===0) return true;
+  const rd = r.ready, tt = r.total_traders||r.trader_count||0;
+  return rd!==undefined && rd!==null && rd!==true && tt>0 && Number(rd)>=Number(tt);
+}
+function fallbackTip(){
+  if(READY && READY.is_fallback && READY.fallback_date){
+    return '<span style="margin-left:8px" class="muted-note"><b style="color:#ba7517">⚠ 今日未检查，显示的是 '+esc(READY.fallback_date)+' 数据（19:30 起轮询后自动更新为今日）</b></span>';
+  }
+  return '';
+}
 function readinessHtml(){
   let summary;
   if(!READY){
     summary = '<span class="muted-note">数据就绪：19:30 起每 15 分钟轮询抓取，直到全部盘手取到 · 企微群同步汇报</span>';
-  } else if(READY.ready===true || READY.missing_count===0){
+  } else if(allReady(READY)){
     const n = READY.total_traders||READY.trader_count||'';
-    summary = '<span class="ok">✅ 数据全部就绪</span><span class="muted-note">'+esc(n)+' 位成员数据已获取 · 20:30 全量核准</span>';
+    summary = '<span class="ok">✅ 数据全部就绪</span><span class="muted-note">'+esc(n)+' 位成员数据已获取 · 可执行核准</span>';
   } else {
     const names = (READY.missing||[]).slice(0,4).map(x=>esc(String(x.aid))).join('、');
     const pollTxt = POLL ? ` · 轮询第 ${esc(POLL.round||POLL.round_no||'')} 轮 · 已取 ${POLL.ready||0}/${POLL.total||0}` : '';
     summary = '<span class="bad">⚠️ '+esc(READY.missing_count)+' 位成员未就绪</span><span class="muted-note">'+(names?names+' …':'')+pollTxt+'</span>';
   }
-  return summary + '<span style="flex:1"></span><span class="muted-note" style="cursor:pointer;user-select:none">▾ 明细</span>' + readyDetailHtml();
+  return summary + fallbackTip() + '<span style="flex:1"></span><span class="muted-note" style="cursor:pointer;user-select:none">▾ 明细</span>' + readyDetailHtml();
 }
 // 就绪明细面板：已取到/未取到名单（点击📡条展开）
 function readyDetailHtml(){
@@ -404,9 +442,11 @@ function dataDayCard(){
   const done = !!(POLL&&POLL.done);
   let stTxt, stCls;
   if(!READY){ stTxt='未运行检查'; stCls='var(--weak)'; }
-  else if(READY.ready===true||miss===0||done){ stTxt='✅ 全部就绪 '+got+'/'+total; stCls='var(--down)'; }
+  else if(allReady(READY)||done){ stTxt='✅ 全部就绪 '+got+'/'+total; stCls='var(--down)'; }
   else { stTxt='⚠️ '+miss+' 人未取到'; stCls='var(--up)'; }
   const chkAt = (POLL&&POLL.checked_at)?' · 第 '+(POLL.round||POLL.round_no||'?')+' 轮 '+esc(POLL.checked_at):'';
+  const fbTip = (READY&&READY.is_fallback&&READY.fallback_date)
+    ? `<div style="margin-top:4px;font-size:11px;color:#ba7517">⚠ 今日未检查，显示的是 ${esc(READY.fallback_date)} 数据 · 19:30 起轮询自动更新为今日</div>` : '';
   const liveTag = LIVE?'实时':'快照';
   return `<div class="data-day-card">
     <div class="dd-item"><span class="dd-label">📅 数据日</span><span class="dd-value">${esc(day)}<span style="font-size:12px;color:var(--weak)"> ${esc(wd)}</span></span></div>
@@ -416,6 +456,7 @@ function dataDayCard(){
       <div class="dd-bar"><div class="dd-fill" style="width:${pct}%;background:${total&&miss?(pct>=100?'var(--down)':'#ba7517'):'var(--blue)'}"></div></div>
     </div>
     <div class="dd-item"><span class="dd-label">⏰ 下次轮询</span><span class="dd-value sm"><span id="dd-count">计算中…</span></span></div>
+    ${fbTip}
   </div>`;
 }
 // 倒计时秒级更新（只改 dd-count 元素，不整页 render）
@@ -476,6 +517,8 @@ function render(){
   else if(mainTab==='risk') el.innerHTML = rRisk(S);
   else if(mainTab==='history') el.innerHTML = rHistory(S);
   else if(mainTab==='align') el.innerHTML = rAlign();
+  else if(mainTab==='calibrate') el.innerHTML = rCalibrate();
+  else if(mainTab==='daily') el.innerHTML = rDailyRecord();
   else el.innerHTML = rPositions(S);
 }
 function renderInfoBar(D){
@@ -483,6 +526,11 @@ function renderInfoBar(D){
   const b = acct.balance, m = acct.margin;
   const risk = b ? (m/b*100) : null;
   const pf = PF[combo]||{};
+  // 2026-08-30：数据日用最新结算日（来自 /api/settlement 实时列表），不要用 embedded sim 的旧值
+  const settleDate = latestSettleDate(combo) || (D.sim.settle||{}).settle_date || '—';
+  // 是否今日已结：最后结算日 == 今天（且 15:30 后）→ "今日已结"，否则显示"上次结 15:30"
+  const today = todayStr();
+  const settleFresh = settleDate===today ? `今日已结 15:30` : `上次结 15:30`;
   document.getElementById('infoBar').innerHTML = `
     <h1>${esc(D.name)}</h1>
     <span class="tag mode">${D.mode}</span>
@@ -490,7 +538,7 @@ function renderInfoBar(D){
     <span class="tag">年化 ${pct(D.metrics.annual_return)}</span>
     <span class="tag">回撤 ${pct(D.metrics.max_drawdown)}</span>
     <span class="tag up">Calmar ${fmt(D.metrics.return_dd_ratio,2)}</span>
-    <div class="right">模拟资金 3000万 · 数据日 ${(D.sim.settle||{}).settle_date||'—'}<br>权益 ${wan(b)}万 · 风险度 ${risk===null?'—':risk.toFixed(1)+'%'}</div>`;
+    <div class="right">模拟资金 3000万 · 数据日 <b>${esc(settleDate)}</b> · ${esc(settleFresh)}<br>权益 ${wan(b)}万 · 风险度 ${risk===null?'—':risk.toFixed(1)+'%'}</div>`;
 }
 function rOverview(D){
   const acct = D.sim.account||{};
@@ -702,11 +750,23 @@ function rPositions(D){
     ['浮动盈亏', fmt(pp,2)],
     ['风险度', risk.toFixed(2)+'%'],
   ];
-  // 模拟账户净值曲线
+  // 模拟账户净值曲线：2026-08-30 用户要求 ① 改 10 分钟更新 ② 只画最近 30 天
   const ln = LIVE_NAV[combo] || sim.nav || [];
-  let line = '<div class="empty">暂无净值曲线</div>';
-  if(ln && ln.t) line = svgSimLine(ln.t.map(t=>t*1000), ln.balance);
-  else if(ln.length>1) line = svgSimLine(ln.map(p=>p.t*1000), ln.map(p=>p.balance));
+  // 取最近 30 天的点（不足 30 天就全画），同时兜底 navTs（任何 NAV 数据源都能算"最近"）
+  const NAV_DAYS = 30;
+  const cutoffMs = Date.now() - NAV_DAYS*86400e3;
+  let navT = [], navB = [];
+  if(ln && ln.t && ln.balance){
+    for(let i=0; i<ln.t.length; i++){
+      const tms = ln.t[i]*1000;
+      if(tms >= cutoffMs){ navT.push(tms); navB.push(ln.balance[i]); }
+    }
+  } else if(ln && ln.length>1){
+    for(const p of ln){ if(p.t*1000 >= cutoffMs){ navT.push(p.t*1000); navB.push(p.balance); } }
+  }
+  const navLatestMs = navT.length ? navT[navT.length-1] : (ln&&ln.t&&ln.t.length ? ln.t[ln.t.length-1]*1000 : null);
+  let line = '<div class="empty">暂无净值曲线（今日首点将在下一 10 分钟周期写入）</div>';
+  if(navT.length>1) line = svgSimLine(navT, navB);
   // 持仓明细（去重期权 + 排序）
   let positions = (sim.positions||[]).filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
   if(posSort.col){
@@ -746,14 +806,23 @@ function rPositions(D){
   // 时段灯
   const seg = segLabel();
   const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
-  const ddTxt = (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
+  // 2026-08-30：数据日用最新结算日（避免用 embedded sim 的旧值导致显示 8.27）
+  const ddTxt = latestSettleDate(combo) || (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
+  // 数据新鲜度：持仓 → LIVE.state_updated_at（TqSim 推送，每 3s wait_update 一次）；成交 → 末笔 tstr；净值 → NAV 最后时间（5min 一次）
+  const stateAt = (LIVE&&LIVE[combo]&&LIVE[combo].state_updated_at) || '';
+  const lastTrade = (sim.trades && sim.trades.length) ? sim.trades[sim.trades.length-1] : null;
+  const lastTradeAt = lastTrade ? fmtHHMM(lastTrade.tstr||'') : '—';
+  const updLbl = stateAt ? `实时（TqSim 推送）· 更新于 ${esc(fmtHHMM(stateAt))}`
+                              : `${esc(liveTag.replace(/· /,'').replace(/<[^>]*>?/gm,''))} · 暂无刷新（休市/重启中）`;
+  const tradeUpdLbl = lastTrade ? `实时 · 最新成交 ${esc(lastTradeAt)}` : '实时 · 当日暂无成交';
+  const navTs = (navT.length ? navT[navT.length-1]/1000 : null) || (LIVE_NAV[combo]&&LIVE_NAV[combo].t&&LIVE_NAV[combo].t.length ? LIVE_NAV[combo].t[Math.max(0,LIVE_NAV[combo].t.length-1)] : null);
   return `
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
   <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
     <div class="chips-row">${comboChips}</div>
   </div>
   <div class="grid-3">
-    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 数据日 ${esc(ddTxt)} · 点击表头排序</span></h3>
+    <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 数据日 ${esc(ddTxt)} · ${esc(updLbl)} · 点击表头排序</span></h3>
       <div class="pos-table-wrap"><table>
         <tr>
           <th class="sortable" onclick="setPosSort('symbol')">${ind('symbol','合约')}</th>
@@ -766,13 +835,13 @@ function rPositions(D){
         </tr>
         ${posRows||'<tr><td colspan="7" class="empty">暂无持仓</td></tr>'}</table></div>
     </div>
-    <div class="panel"><h3>成交记录 <span class="hint">最近 ${trades.length} 笔 · 数据日 ${esc(ddTxt)}</span></h3>
+    <div class="panel"><h3>成交记录 <span class="hint">最近 ${trades.length} 笔 · 数据日 ${esc(ddTxt)} · ${esc(tradeUpdLbl)}</span></h3>
       <div class="trade-table-wrap"><table>
         <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th>手数</th><th>价格</th><th>手续费</th></tr>
         ${tradeRows||'<tr><td colspan="7" class="empty">暂无成交</td></tr>'}</table></div>
     </div>
   </div>
-  <div class="panel" style="margin-top:12px"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）</span></h3>${line}
+  <div class="panel" style="margin-top:12px"><h3>账户净值曲线 <span class="hint">模拟账户权益时序（balance）· <b>每 10 分钟</b>更新一次 · 显示<b>最近 30 天</b>（${navT.length} 点）· 最近 ${esc(fmtHHMM(navTs))}</span></h3>${line}
     <div class="live-status" style="margin-top:6px">
       <span><span class="seg-light" style="background:${seg.c}"></span>${seg.t}</span>
       <span>账号 ${esc(sim.tq_user ? String(sim.tq_user).slice(0,3)+'***' : '—')}</span>
@@ -831,8 +900,8 @@ function rHistory(D){
   // 列：日期 | 账户权益 | 上日结存 | 当日结存 | 当日入金 | 当日出金 | 逐日盈亏 | 保证金占用 | 手续费 | 可用资金 | 风险度
   const rows = pageList.map(s=>{
     const dPnl = (s.balance||0) - (s.open_balance||0);  // 逐日盈亏 = 结算权益 - 上日结存
-    return `<tr>
-      <td>${esc(s.settle_date||'—')}</td>
+    return `<tr style="cursor:pointer" onclick="openSettlementDetail('${esc(combo)}','${esc(s.settle_date||'')}')" title="点击查看当日持仓 + 成交明细">
+      <td><b>${esc(s.settle_date||'—')}</b></td>
       <td>${fmt(s.balance,0)}</td>
       <td>${fmt(s.open_balance,0)}</td>
       <td>${fmt(s.balance,0)}</td>
@@ -846,7 +915,7 @@ function rHistory(D){
     </tr>`;
   }).join('');
   return `
-  <div class="panel"><h3>历史数据 <span class="hint">每日结算单 · 来源：monitor_db settlements</span></h3>
+  <div class="panel"><h3>历史数据 <span class="hint">每日结算单 · 来源：monitor_db settlements · <b>点日期</b>查看当日持仓 + 成交明细</span></h3>
     <div class="filterbar">
       <span>共 <b>${fmt(total)}</b> 条结算记录 · 每页 ${histSize} 条</span>
       <span class="muted">逐日盈亏 = 账户权益 − 上日结存（已扣除手续费）</span>
@@ -864,6 +933,90 @@ function rHistory(D){
 function changeHistPage(d){
   histPage += d; if(histPage<1) histPage=1;
   render();
+}
+// ---------- 历史数据 · 日详情弹窗（点日期打开，2026-08-29） ----------
+let SETTLE_MODAL_DATE = '';
+async function openSettlementDetail(c, date){
+  SETTLE_MODAL_DATE = date;
+  const box = document.getElementById('alignModalBox');
+  box.dataset.kind = 'settle';
+  box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub)">加载中...</div>';
+  document.getElementById('alignModal').classList.add('open');
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/settlement?combo='+encodeURIComponent(c)+'&date='+encodeURIComponent(date), {cache:'no-store'});
+    const j = await r.json();
+    if(j && j.error){ box.innerHTML = `<div class="empty" style="padding:24px">${esc(j.error)}</div>`; return; }
+    box.innerHTML = modalSettlementContent(c, date, j);
+  }catch(e){ box.innerHTML = `<div class="empty" style="padding:24px">请求失败：${esc(e.message)}</div>`; }
+}
+function modalSettlementContent(c, date, data){
+  data = data || {};
+  const d = AA[c]||{};
+  const nm = esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''));
+  // 持仓：去重期权，按品种聚合
+  const posList = (data.positions||[]).filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
+  const trades = data.trades || [];
+  const closes = data.close_trades || [];
+  const dayPnl = (data.balance||0) - (data.open_balance||0);
+  // 持仓表（按品种聚合净手数）
+  const posRows = posList.map(p=>{
+    const sym=p.symbol||'';
+    const side = (p.long||0)>(p.short||0)?'多':((p.short||0)>(p.long||0)?'空':'—');
+    return `<tr><td>${esc(sym.split('.').slice(-1)[0])} <span class="muted" style="font-size:11px">${esc(sym)}</span></td>
+      <td style="text-align:right" class="up">${fmt(p.long)}</td>
+      <td style="text-align:right" class="down">${fmt(p.short)}</td>
+      <td style="text-align:center">${side}</td>
+      <td style="text-align:right">${fmt(p.last,2)}</td>
+      <td style="text-align:right" class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))}万</td>
+      <td style="text-align:right">${fmt(wan(p.margin,0),0)}万</td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">该日无持仓快照（需 15:30 结算时自动生成）</td></tr>';
+  // 成交记录
+  const tradeRows = trades.slice().reverse().map(t=>`<tr>
+    <td>${esc(t.tstr||'—')}</td><td>${esc(t.symbol||'')}</td>
+    <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
+    <td>${t.offset==='OPEN'?'开':'平'}</td>
+    <td style="text-align:right">${fmt(t.volume)}</td>
+    <td style="text-align:right">${fmt(t.price,2)}</td>
+    <td style="text-align:right">${fmt(t.commission,1)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">该日无成交记录（夜盘 21:00 自动核准未触发 / 周末无交易）</td></tr>';
+  return `<h3>${nm} · ${esc(date)} 详情 <span class="legend-chip" style="background:#e6f1fb;color:#185fa5">来源：monitor_db.settlements</span></h3>
+  <div class="modal-nav">
+    <button onclick="navSettle(-1)">◀ 前一日</button>
+    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">历史快照 · 每日 15:30 自动结算</span>
+    <button onclick="navSettle(1)">后一日 ▶</button>
+  </div>
+  <div style="background:#F1EFE8;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px">
+    <span><span style="color:var(--text-secondary)">账户权益</span> <b>${fmt(data.balance,0)}</b></span>
+    <span><span style="color:var(--text-secondary)">上日结存</span> <b>${fmt(data.open_balance,0)}</b></span>
+    <span><span style="color:var(--text-secondary)">逐日盈亏</span> <b class="${dayPnl>0?'up':(dayPnl<0?'down':'')}">${pnlTxt(dayPnl)}</b></span>
+    <span><span style="color:var(--text-secondary)">手续费</span> <b>${fmt(data.day_commission,1)}</b></span>
+    <span><span style="color:var(--text-secondary)">可用资金</span> <b>${fmt(data.available,0)}</b></span>
+    <span><span style="color:var(--text-secondary)">风险度</span> <b>${data.risk_ratio!==null&&data.risk_ratio!==undefined?Number(data.risk_ratio).toFixed(2)+'%':'—'}</b></span>
+  </div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>① 当日持仓快照 <span class="hint">${posList.length} 条 · 来源：结算单 15:30 时点 · 品种按多空对齐合并</span></h3>
+    <div class="trade-table-wrap" style="max-height:300px"><table>
+      <tr><th style="text-align:left">品种</th><th style="text-align:right">多</th><th style="text-align:right">空</th><th style="text-align:center">方向</th><th style="text-align:right">最新价</th><th style="text-align:right">浮动盈亏</th><th style="text-align:right">保证金</th></tr>
+      ${posRows}
+    </table></div>
+  </div>
+  <div class="panel">
+    <h3>② 当日成交记录 <span class="hint">开仓 ${trades.length} 笔 · 平仓 ${closes.length} 笔</span></h3>
+    <div class="trade-table-wrap" style="max-height:260px"><table>
+      <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">价格</th><th style="text-align:right">手续费</th></tr>
+      ${tradeRows}
+    </table></div>
+  </div>
+  <div class="modal-footer">
+    <button style="padding:6px 14px;border-radius:8px;border:0.5px solid var(--line);background:#fff;cursor:pointer" onclick="closeAlignModal()">关闭</button>
+  </div>`;
+}
+function navSettle(d){
+  // 找当前页结算单列表的相邻日期
+  const list = (window.__SETL && window.__SETL[combo]) || [];
+  const idx = list.findIndex(s=>s.settle_date===SETTLE_MODAL_DATE);
+  const next = list[idx+d];
+  if(next && next.settle_date) openSettlementDetail(combo, next.settle_date);
+  else alert('已到' + (d>0?'最晚':'最早') + '一日');
 }
 // ---------- 持仓对齐 Tab（每日核准看板，2026-08-27） ----------
 let alignFilter='all', alignSel=null, alignAuto=true;
@@ -968,6 +1121,13 @@ function actionClass(a){
   return {key:k, label:{buy:'买开',add:'加仓',sell:'卖平',cut:'减仓'}[k]};
 }
 function actionStatus(c, act){
+  // 2026-08-30：优先用"今日真实成交"（/api/today_trades，monitor_db trade_date_time 精确过滤当天）
+  const fills = TODAY_FILLS && TODAY_FILLS[c];
+  if(fills){
+    if(fills.has(act.symbol)) return {t:'✓ 今日成交', bg:'#e6f4ea;color:#1a7f37'};
+    return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
+  }
+  // 兜底：旧 logs 逻辑（无 18081 / 今日成交未拉到）
   const logs = (LIVE&&LIVE[c]&&LIVE[c].logs)||[];
   const sym = act.symbol;
   const rel = logs.filter(l=>String(l).indexOf(sym)>=0);
@@ -1043,10 +1203,16 @@ function rPrePlan(){
       <td style="text-align:right;color:#a06000">${cut||'—'}</td>
       <td style="text-align:right">${fmt(vol)}</td>
       <td style="text-align:right">${estHtml}</td>
+      <td style="text-align:center"><button style="font-size:11px;border:0.5px solid var(--line);background:#fff;color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer" onclick="event.stopPropagation();jumpToCalibrate('${c}')">校准</button></td>
     </tr>`;
   }).filter(Boolean).join('');
+  // 动作计划所属日期（后端 build_action_plan 的 plan_built_at；缺省用 READY.date）
+  const planDate = (()=>{
+    for(const c of COMBOS){ const p=ACTIONS&&ACTIONS[c]; if(p&&p.plan_built_at) return String(p.plan_built_at).slice(0,16); }
+    return READY&&READY.date ? String(READY.date) : todayStr();
+  })();
   return `<div class="panel" style="margin-bottom:12px">
-    <h3>① 盘前计划 <span class="hint">开盘前该做的 · 含全部品种（有/无夜盘，执行时区分）· 点击行查看详情弹窗</span></h3>
+    <h3>① 盘前计划 <span class="hint">开盘前该做的 · 计划生成 <b>${esc(planDate)}</b> · 点击行查看详情弹窗 · 右列「校准」进入数据校准页</span></h3>
     <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
       <div class="card"><div class="label">待执行组合</div><div class="value">${todo} / 10</div><div class="sub">有差异待补单</div></div>
       <div class="card"><div class="label">总动作</div><div class="value">${acts} 笔</div><div class="sub">买开/卖平/加/减</div></div>
@@ -1054,8 +1220,8 @@ function rPrePlan(){
       <div class="card"><div class="label">下次执行</div><div class="value" style="font-size:16px">21:00</div><div class="sub">夜盘开盘 · ${fmtCd(21,0)}</div></div>
     </div>
     ${ACTIONS ? `<table>
-      <tr><th>组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">买开</th><th style="text-align:right">卖平</th><th style="text-align:right">加仓</th><th style="text-align:right">减仓</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th></tr>
-      ${rows||'<tr><td colspan="9" class="empty">暂无待执行动作（全部已对齐）</td></tr>'}</table>
+      <tr><th>组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">买开</th><th style="text-align:right">卖平</th><th style="text-align:right">加仓</th><th style="text-align:right">减仓</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th><th style="text-align:center">校准</th></tr>
+      ${rows||'<tr><td colspan="10" class="empty">暂无待执行动作（全部已对齐）</td></tr>'}</table>
       <div class="mini-legend">
         <span><span class="legend-chip" style="background:#e6f1fb;color:#185fa5">净持仓</span> 数据必须齐全才能操作</span>
         <span><span class="legend-chip" style="background:#faeeda;color:#854f0b">单盘手</span> 有数据就部分跟</span>
@@ -1068,7 +1234,22 @@ function rPrePlan(){
 // 弹窗：盘前计划详情（一次一个组合，弹窗内 ◀▶ 切换）
 function modalAlignContent(c){
   const d = AA[c]||{};
-  const p = (ACTIONS&&ACTIONS[c])||{};
+  const hist = (modalHist && modalHist.combo===c) ? modalHist : null;
+  // 数据源：历史快照优先，否则实时 ACTIONS
+  let p;
+  if(hist){
+    const fs = hist.fetch_summary||{};
+    const ctype = hist.combo_type;
+    const isNetH = ctype!=='single';
+    p = {
+      actions: hist.actions||[], combo_type: ctype, scale: hist.scale,
+      est_margin: 0, total_vol: (hist.actions||[]).reduce((s,a)=>s+(a.volume||0),0),
+      trader_status: {got:fs.ready_count, total:fs.total_count, missing:fs.missing||[]},
+      data_ready: isNetH ? (fs.ready_count===fs.total_count && fs.total_count>0) : (fs.ready_count>0),
+    };
+  } else {
+    p = (ACTIONS&&ACTIONS[c])||{};
+  }
   const a2 = p.actions||[];
   const isNet = p.combo_type!=='single';
   const ts = p.trader_status||{got:0,total:0};
@@ -1106,11 +1287,20 @@ function modalAlignContent(c){
     return `<div class="batch-title">${title} · ${list.length} 笔</div>
       <table><tr><th>品种</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">当前→目标</th><th style="text-align:center">状态</th></tr>${rows}</table>`;
   };
-  return `<h3>${nm} · 盘前计划详情</h3>
+  const histNote = hist ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(modalHistDate)} 快照</span>` : '';
+  const todayFillCnt = (TODAY_FILLS && TODAY_FILLS[c]) ? TODAY_FILLS[c].size : 0;
+  const todayChip = (hist ? '' : `<span class="legend-chip" style="background:${todayFillCnt?'#e6f4ea':'#f0f4fa'};color:${todayFillCnt?'#1a7f37':'#57606a'}">今日已成交 ${todayFillCnt} 个品种</span>`);
+  const planAt = hist ? String(hist.timestamps&&hist.timestamps.plan_built_at||'').slice(11,16) : '';
+  return `<h3>${nm} · 盘前计划详情 ${histNote} ${todayChip}</h3>
   <div class="modal-nav">
     <button onclick="modalNav(-1)">◀ 上一组合</button>
-    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">${isNet?'净持仓组合':'单盘手组合'} · 跟投比例 ${((p.scale||0)*100).toFixed(2)}%</span>
+    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">${isNet?'净持仓组合':'单盘手组合'} · 跟投比例 ${((p.scale||0)*100).toFixed(2)}%${planAt?' · 计划 '+esc(planAt):''}</span>
     <button onclick="modalNav(1)">下一组合 ▶</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--sub)">
+    <span>历史记录：</span>
+    <input type="date" id="modal-date" value="${esc(modalHistDate||'')}" onchange="modalLoadDate('${c}',this.value)" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--line);border-radius:6px">
+    <span>${modalHistDate ? '显示 '+esc(modalHistDate)+' 当天盘手明细/动作清单' : '实时（今日）· 选日期查看历史'}</span>
   </div>
   ${strip}
   <div style="color:var(--sub);font-size:12px;margin-bottom:6px">盘手明细（${ts.got}/${ts.total||accs.length} 已取数）</div>
@@ -1127,10 +1317,33 @@ function modalAlignContent(c){
   </div>`;
 }
 let alignModalIdx = 0;
+// 2026-08-29：弹窗历史记录（日期选择 → 从 /api/align_detail?date= 读当天快照）
+let modalHist = null;      // 历史 align_detail（combo/actions/raw/net_vs_follower/时间戳）
+let modalHistDate = '';    // 当前历史日期（空=实时）
+async function modalLoadDate(c, v){
+  modalHistDate = v || '';
+  if(!v){ modalHist = null; renderModalBody(); return; }
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/align_detail?combo='+c+'&date='+v, {cache:'no-store'});
+    const j = await r.json();
+    modalHist = (j && j.combo===c) ? j : null;
+  }catch(e){ modalHist = null; }
+  renderModalBody();
+}
+function renderModalBody(){
+  // 根据当前打开的是哪个弹窗类型渲染（用 modalHist 区分：compare 弹窗通过 modalHist 是否含 net_vs_follower 判断不可靠，改用显式标记）
+  const box = document.getElementById('alignModalBox');
+  if(!box) return;
+  if(box.dataset.kind==='compare') box.innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
+  else box.innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
+}
 function openAlignModal(c){
   alignModalIdx = COMBOS.indexOf(c);
   if(alignModalIdx<0) alignModalIdx = 0;
-  document.getElementById('alignModalBox').innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
+  modalHist = null; modalHistDate = '';
+  const box = document.getElementById('alignModalBox');
+  box.dataset.kind = 'align';
+  box.innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
   document.getElementById('alignModal').classList.add('open');
 }
 function closeAlignModal(){
@@ -1138,7 +1351,8 @@ function closeAlignModal(){
 }
 function modalNav(d){
   alignModalIdx = (alignModalIdx + d + COMBOS.length) % COMBOS.length;
-  document.getElementById('alignModalBox').innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
+  if(modalHistDate){ modalLoadDate(COMBOS[alignModalIdx], modalHistDate); }
+  else renderModalBody();
 }
 // 弹窗：原组合 ↔ 跟投账户 品种逐项对照
 function compareByVariety(c){
@@ -1176,10 +1390,37 @@ function compareByVariety(c){
 }
 function modalCompareContent(c){
   const d=AA[c]||{};
-  const {rows, a}=compareByVariety(c);
-  const isNet=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].combo_type!=='single');
-  const ready=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].data_ready);
-  const ts=(ACTIONS&&ACTIONS[c]&&ACTIONS[c].trader_status)||{got:0,total:0};
+  const hist = (modalHist && modalHist.combo===c) ? modalHist : null;
+  let rows, a, isNet, ready, ts;
+  if(hist){
+    // 历史模式：用当天 net_vs_follower 快照
+    const fs = hist.fetch_summary||{};
+    const nvf = hist.net_vs_follower||[];
+    const scale = hist.scale||0;
+    rows = nvf.map(r=>{
+      const oNet = (r.raw_long||0) - (r.raw_short||0);
+      const ok = Math.abs(r.diff||0) <= Math.max(1, Math.round((r.scaled_target||0)*0.05));
+      return {v:r.variety, oNet, fNet:r.follower_net||0, tLots:r.scaled_target||0, tMargin:r.margin||0, ok,
+              oNames:[], fName:r.variety};
+    });
+    a = {
+      scale, oLots: nvf.reduce((s,r)=>s+(r.raw_net||0),0),
+      fLots: nvf.reduce((s,r)=>s+(r.follower_net||0),0),
+      tLots: nvf.reduce((s,r)=>s+(r.scaled_target||0),0),
+      oMargin: 0,
+      fMargin: nvf.reduce((s,r)=>s+(r.margin||0),0),
+      fBal: 0, alignPct: nvf.length ? (nvf.filter(x=>(x.diff||0)===0).length/nvf.length*100) : 0,
+    };
+    isNet = hist.combo_type!=='single';
+    ready = isNet ? (fs.ready_count===fs.total_count && fs.total_count>0) : (fs.ready_count>0);
+    ts = {got:fs.ready_count, total:fs.total_count, missing:fs.missing||[]};
+  } else {
+    const cmp = compareByVariety(c);
+    rows = cmp.rows; a = cmp.a;
+    isNet = (ACTIONS&&ACTIONS[c]&&ACTIONS[c].combo_type!=='single');
+    ready = (ACTIONS&&ACTIONS[c]&&ACTIONS[c].data_ready);
+    ts = (ACTIONS&&ACTIONS[c]&&ACTIONS[c].trader_status)||{got:0,total:0};
+  }
   const missNames=(ts.missing||[]).map(m=>esc(m.name)).join('、');
   const strip=isNet?(ready
     ? `<div class="ok-strip">✅ 净持仓组合 · ${ts.got}/${ts.total} 盘手已取数 · 数据齐全可对</div>`
@@ -1192,7 +1433,7 @@ function modalCompareContent(c){
     const okBg = r.ok?'#e6f4ea':'#fde8e8';
     const okClr = r.ok?'#1a7f37':'#cf222e';
     return `<tr>
-      <td><b>${r.v}</b> <span class="muted" style="font-size:11px">${esc(r.oNames.join('/')||r.fName)}</span></td>
+      <td><b>${r.v}</b> <span class="muted" style="font-size:11px">${esc(r.oNames&&r.oNames.join('/')||r.fName)}</span></td>
       <td style="text-align:right">${r.oNet}</td>
       <td style="text-align:right">${r.fNet}</td>
       <td style="text-align:right" class="muted">${r.tLots}</td>
@@ -1202,11 +1443,20 @@ function modalCompareContent(c){
     </tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">无数据</td></tr>';
   const nm = esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''));
-  return `<h3>${nm} · 原组合 ↔ 跟投账户 品种对照</h3>
+  const histNote = hist ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(modalHistDate)} 快照</span>` : '';
+  const todayFillCnt = (TODAY_FILLS && TODAY_FILLS[c]) ? TODAY_FILLS[c].size : 0;
+  const todayChip = (hist ? '' : `<span class="legend-chip" style="background:${todayFillCnt?'#e6f4ea':'#f0f4fa'};color:${todayFillCnt?'#1a7f37':'#57606a'}">今日已成交 ${todayFillCnt} 个品种</span>`);
+  const planAt = hist ? String(hist.timestamps&&hist.timestamps.plan_built_at||'').slice(11,16) : '';
+  return `<h3>${nm} · 原组合 ↔ 跟投账户 品种对照 ${histNote} ${todayChip}</h3>
   <div class="modal-nav">
     <button onclick="compareNav(-1)">◀ 上一组合</button>
-    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">${isNet?'净持仓组合':'单盘手组合'} · 跟投比例 ${(a.scale*100).toFixed(2)}%</span>
+    <span style="flex:1;text-align:center;font-size:12px;color:var(--sub)">${isNet?'净持仓组合':'单盘手组合'} · 跟投比例 ${(a.scale*100).toFixed(2)}%${planAt?' · 计划 '+esc(planAt):''}</span>
     <button onclick="compareNav(1)">下一组合 ▶</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--sub)">
+    <span>历史记录：</span>
+    <input type="date" id="modal-date" value="${esc(modalHistDate||'')}" onchange="modalLoadDate('${c}',this.value)" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--line);border-radius:6px">
+    <span>${modalHistDate ? '显示 '+esc(modalHistDate)+' 当天品种对照' : '实时（今日）· 选日期查看历史'}</span>
   </div>
   ${strip}
   <div style="color:var(--sub);font-size:12px;margin-bottom:6px">品种逐项对照（${rows.length} 个品种）</div>
@@ -1227,12 +1477,16 @@ let compareModalIdx=0;
 function openCompareModal(c){
   compareModalIdx=COMBOS.indexOf(c);
   if(compareModalIdx<0) compareModalIdx=0;
-  document.getElementById('alignModalBox').innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
+  modalHist = null; modalHistDate = '';
+  const box = document.getElementById('alignModalBox');
+  box.dataset.kind = 'compare';
+  box.innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
   document.getElementById('alignModal').classList.add('open');
 }
 function compareNav(d){
   compareModalIdx=(compareModalIdx+d+COMBOS.length)%COMBOS.length;
-  document.getElementById('alignModalBox').innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
+  if(modalHistDate){ modalLoadDate(COMBOS[compareModalIdx], modalHistDate); }
+  else renderModalBody();
 }
 function jumpFromModal(c){
   closeAlignModal();
@@ -1338,10 +1592,241 @@ function rAlignDetail(c){
   </div>`;
 }
 function setAlignSel(c){ alignSel = (alignSel===c?null:c); render(); }
+// ---------- 数据校准 Tab（2026-08-29 新增） ----------
+function jumpToCalibrate(c){
+  // 2026-08-30：从持仓对齐跳入校准时也只设 CALIB_COMBO（保持其他 tab 不被影响）
+  CALIB_COMBO = c;
+  CALIB_DATE = '';
+  mainTab = 'calibrate';
+  page = 1;
+  tryLive();  // 拉取该组合 align_detail
+  render();
+}
+function calibData(){
+  const c = CALIB_COMBO || combo;
+  return (CALIB && CALIB.combo===c) ? CALIB : null;
+}
+function calibStatus(diff, target){
+  const abs = Math.abs(diff||0);
+  if(diff===0) return {t:'已对齐', bg:'#e6f4ea;color:#1a7f37'};
+  if(abs <= Math.max(1, Math.round((target||0)*0.05))) return {t:'误差内', bg:'#faebcc;color:#a06000'};
+  return {t:'需核准', bg:'#fde8e8;color:#cf222e'};
+}
+function rCalibrate(){
+  const c = CALIB_COMBO || combo;
+  const data = calibData();
+  const d = AA[c]||{};
+  // 组合切换：2026-08-30 只设 CALIB_COMBO（局部），不再改全局 combo（避免影响持仓分析等 tab）
+  const chips = COMBOS.map(x=>`<button class="chip-btn ${x===c?'on':''}" onclick="CALIB_COMBO='${x}';CALIB_DATE='';tryLive()">${esc(((AA[x]||{}).name||x).replace('组合','').replace('全能主','').replace('优质',''))}</button>`).join('');
+  const histTag = CALIB_DATE ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(CALIB_DATE)} 历史快照</span>` : '';
+  if(!data){
+    return `<div class="ready-bar">📡 ${readinessHtml()}</div>
+      <div class="panel"><h3>数据校准 <span class="hint">原持仓 → 净持仓 → 计划 全链路比对</span></h3>
+        <div class="chips-row">${chips}</div>
+        <div class="empty" style="padding:24px">暂无该组合校准数据（需连接 18081 实时服务；19:30 数据齐后可校准，或选下方历史日期查看快照）</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)"><span>历史记录：</span><input type="date" value="${esc(CALIB_DATE)}" onchange="setCalibDate(this.value)" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--line);border-radius:6px"></div>
+      </div>`;
+  }
+  const ts = data.timestamps||{};
+  const fs = data.fetch_summary||{};
+  const calT = ts.calibrate_at
+    ? `<b style="color:var(--down)">${esc(String(ts.calibrate_at).slice(11,19))}</b>`
+    : '<b style="color:#cf222e">未校准</b>';
+  // 段1：盘手原持仓（品种行 × 盘手列，纵向不溢出）
+  const rawRows = data.raw_positions||[];
+  const rawByTrader = {};
+  rawRows.forEach(r=>{ (rawByTrader[r.aid] = rawByTrader[r.aid]||{name:r.name||r.aid, vars:{}}).vars[r.variety] = (r.long||0)+'/'+(r.short||0); });
+  const traderAids = Object.keys(rawByTrader);
+  const agg = data.raw_aggregated||{};
+  // 只显示有持仓的品种（避免空品种行）；按原净手数降序
+  const varsAll = Object.keys(agg).sort((a,b)=>((agg[b].net||0)-(agg[a].net||0)));
+  const rawRowHtml = varsAll.map(v=>{
+    return `<tr><td style="text-align:left"><b>${esc(v)}</b> <span class="muted">净 ${fmt(agg[v].net)}</span></td>${traderAids.map(aid=>{const t=rawByTrader[aid]; const cell=t.vars[v]; return `<td style="text-align:center">${cell||'—'}</td>`;}).join('')}<td style="text-align:center"><b>${fmt(agg[v].long)}/${fmt(agg[v].short)}</b></td></tr>`;
+  }).join('')||'<tr><td colspan="'+(traderAids.length+2)+'" class="empty">无持仓数据</td></tr>';
+  // 段2：净持仓 vs 跟投
+  const nvf = data.net_vs_follower||[];
+  const nvfRows = nvf.map(r=>{
+    const st2 = calibStatus(r.diff, r.scaled_target);
+    return `<tr><td style="text-align:left"><b>${esc(r.variety)}</b></td>
+      <td style="text-align:center">${fmt(r.raw_long)}/${fmt(r.raw_short)}</td>
+      <td style="text-align:center">${fmt(r.raw_net)}</td>
+      <td style="text-align:center">${fmt(r.scaled_target)}</td>
+      <td style="text-align:center">${fmt(r.follower_net)}</td>
+      <td style="text-align:center" class="${r.diff>0?'up':(r.diff<0?'down':'')}">${r.diff>0?'+':''}${fmt(r.diff)}</td>
+      <td style="text-align:center"><span class="legend-chip" style="background:${st2.bg}">${st2.t}</span></td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">暂无比对数据</td></tr>';
+  // 段3：动作计划
+  const acts = data.actions||[];
+  const actRows = acts.slice(0,60).map(a=>{
+    const st3 = actionStatus(c, a);
+    return `<tr><td style="text-align:left">${esc(a.name||a.symbol)}</td>
+      <td class="${a.direction==='BUY'?'up':'down'}" style="text-align:center">${a.direction==='BUY'?'买':'卖'}</td>
+      <td style="text-align:center">${a.offset==='OPEN'?'开':'平'}</td>
+      <td style="text-align:right">${fmt(a.volume)}</td>
+      <td style="text-align:right" class="muted">${fmt(a.cur)} → ${fmt(a.target)}</td>
+      <td style="text-align:center">${a.session==='night'?'夜盘':(a.session==='index'?'股指':'次日')}</td>
+      <td style="text-align:center"><span class="legend-chip" style="background:${st3.bg}">${st3.t}</span></td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">暂无动作</td></tr>';
+  return `
+  <div class="ready-bar">📡 ${readinessHtml()}</div>
+  <div class="panel" style="padding:12px 16px">
+    <h3>数据校准 <span class="hint">原持仓 → 净持仓 → 计划 全链路比对 · 数据日 ${esc(data.date||'—')} · 跟投比例 ${((data.scale||0)*100).toFixed(2)}%</span> ${histTag}</h3>
+    <div class="chips-row">${chips}</div>
+  </div>
+  <div class="data-day-card" style="margin-bottom:12px">
+    <div class="dd-item"><span class="dd-label">⏱ 数据取完</span><span class="dd-value sm">${esc((ts.data_fetched_at||'—').slice(11,19))}</span></div>
+    <div class="dd-item"><span class="dd-label">📋 计划生成</span><span class="dd-value sm">${esc((ts.plan_built_at||'—').slice(11,19))}</span></div>
+    <div class="dd-item"><span class="dd-label">🆗 校准</span><span class="dd-value sm">${calT}</span></div>
+    <div class="dd-item"><span class="dd-label">🕒 最新</span><span class="dd-value sm">${esc((ts.last_updated_at||'—').slice(11,19))}</span></div>
+    <div class="dd-item"><span class="dd-label">📅 历史记录</span><span class="dd-value sm"><input type="date" value="${esc(CALIB_DATE)}" onchange="setCalibDate(this.value)" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--line);border-radius:6px"></span></div>
+    <div class="dd-item" style="margin-left:auto"><button style="border:0.5px solid var(--blue);background:var(--blue);color:#fff;border-radius:8px;padding:6px 16px;font-size:13px;cursor:pointer;${CALIB_DATE?'opacity:.5;cursor:not-allowed':''}" ${CALIB_DATE?'disabled':''} onclick="doCalibrate('${c}')">立即校准</button></div>
+  </div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>① 盘手原持仓 <span class="hint">${fs.ready_count||0}/${fs.total_count||0} 已取数 · 品种行 × 盘手列 · 末列原汇总</span></h3>
+    <div class="trade-table-wrap" style="max-height:320px"><table>
+      <tr><th style="text-align:left">品种</th>${traderAids.map(aid=>`<th style="text-align:center">${esc(rawByTrader[aid].name.split('的')[0]||rawByTrader[aid].name)}<br><span style="font-weight:400;color:var(--weak)">#${esc(aid)}</span></th>`).join('')}<th style="text-align:center">原汇总</th></tr>
+      ${rawRowHtml}
+    </table></div>
+    <div class="mini-legend"><span>多/空 为各盘手 T 日原始持仓；原汇总 = 各盘手同品种求和（按净手数降序）</span></div>
+  </div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>② 净持仓 vs 跟投账户（数据校准） <span class="hint">差异阈值 ±1 手 或 5%</span></h3>
+    <div class="trade-table-wrap" style="max-height:300px"><table>
+      <tr><th style="text-align:left">品种</th><th style="text-align:center">原多/空</th><th style="text-align:center">原净</th><th style="text-align:center">缩放目标</th><th style="text-align:center">跟投实际</th><th style="text-align:center">差异</th><th style="text-align:center">状态</th></tr>
+      ${nvfRows}
+    </table></div>
+    <div class="mini-legend">
+      <span><span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">已对齐</span> 差异=0</span>
+      <span><span class="legend-chip" style="background:#faebcc;color:#a06000">误差内</span> ≤1手或5%</span>
+      <span><span class="legend-chip" style="background:#fde8e8;color:#cf222e">需核准</span> 超阈值</span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>③ 动作计划 <span class="hint">共 ${acts.length} 笔 · 21:00 夜盘 / 次日 09:00 撮合 · ${CALIB_DATE?'历史快照':'今日已成交 '+(TODAY_FILLS[c]?TODAY_FILLS[c].size:0)+' 个品种'}</span></h3>
+    <div class="trade-table-wrap" style="max-height:300px"><table>
+      <tr><th style="text-align:left">品种</th><th style="text-align:center">方向</th><th style="text-align:center">开平</th><th style="text-align:right">手数</th><th style="text-align:right">当前→目标</th><th style="text-align:center">批次</th><th style="text-align:center">状态</th></tr>
+      ${actRows}
+    </table></div>
+    <div class="mini-legend"><span>校准 = 比对原汇总 → 净持仓 → 缩放目标 → 跟投实际 全链路，确认无误差后点「立即校准」写校准时间</span></div>
+  </div>`;
+}
+function setCalibDate(v){
+  CALIB_DATE = v || '';
+  tryLive();
+}
+function doCalibrate(c){
+  fetch('http://127.0.0.1:18081/api/align_calibrate?combo='+c+'&date='+todayStr(), {method:'POST', cache:'no-store'})
+    .then(r=>r.json())
+    .then(j=>{ if(j&&j.ok){ alert('校准完成 '+j.calibrate_at); tryLive(); } else { alert('校准失败：'+(j&&j.error||'未知')); } })
+    .catch(e=>alert('校准请求失败：'+e.message));
+}
+// ---------- 日记录 Tab（2026-08-29 v2：盘前计划+开盘执行每日快照回溯） ----------
+let SNAP_DATE = todayStr();
+async function loadSnap(){
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/daily_snapshots?date='+SNAP_DATE, {cache:'no-store'});
+    if(r.ok){ SNAP = await r.json(); render(); }
+  }catch(e){}
+}
+function rDailyRecord(){
+  const snap = (SNAP && SNAP.date===SNAP_DATE) ? SNAP : {date:SNAP_DATE, pre_market:{}, execution:{records:[]}};
+  const pm = snap.pre_market || {};
+  const ex = snap.execution || {records:[]};
+  const summary = pm.summary || {};
+  const metrics = pm.combo_metrics || [];
+  const records = ex.records || [];
+  // ① 盘前计划 4 卡片
+  const cards = [
+    ['待执行组合', `${summary.todo||0} / 10`, '有差异待补单'],
+    ['总动作', `${summary.acts||0} 笔`, '买开/卖平/加/减'],
+    ['预计占用', `¥${((summary.est||0)/1e4).toFixed(0)}万`, '数据齐全组合合计'],
+    ['计划生成', `<span style="font-size:14px">${esc(String(summary.plan_built_at||'—').slice(11,16)||'—')}</span>`, `更新于 ${esc(String(snap.updated_at||'—').slice(11,19))}`],
+  ];
+  // ① 盘前计划 表格（按 combo_metrics，与 rPrePlan 同构）
+  const rows = metrics.map(p=>{
+    const ts = p.trader_status||{got:0,total:0};
+    const ready = !!p.data_ready;
+    const isNet = p.combo_type!=='single';
+    let stChip;
+    if(!p.combo_type) stChip = '<span class="legend-chip" style="background:#f0f4fa;color:#57606a">快照</span>';
+    else if(isNet) stChip = ready
+      ? `<span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">✅ ${ts.got}/${ts.total} 已取</span>`
+      : `<span class="legend-chip" style="background:#fde8e8;color:#cf222e">⚠️ ${ts.got}/${ts.total} 已取</span>`;
+    else stChip = `<span class="legend-chip" style="background:#f0f4fa;color:#57606a">盘手 ${ts.got>0?'✓':'✗'}</span>`;
+    const typeChip = isNet
+      ? '<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">净持仓</span>'
+      : '<span class="legend-chip" style="background:#faeeda;color:#854f0b">单盘手</span>';
+    const a2 = p.actions || [];
+    let buy=0,sell=0,add=0,cut=0;
+    a2.forEach(a=>{const k=actionClass(a).key; if(k==='buy')buy++; else if(k==='sell')sell++; else if(k==='add')add++; else cut++;});
+    const estHtml = (p.combo_type && !ready) ? '<span class="muted">¥—</span>' : `<span class="muted">¥${((p.est_margin||0)/1e4).toFixed(0)}万</span>`;
+    return `<tr>
+      <td>${esc((p.name||p.combo).replace('组合','').replace('全能主','').replace('优质',''))}</td>
+      <td>${typeChip}</td>
+      <td>${stChip}</td>
+      <td style="text-align:right;color:var(--up)">${buy||'—'}</td>
+      <td style="text-align:right;color:var(--down)">${sell||'—'}</td>
+      <td style="text-align:right;color:#ba7517">${add||'—'}</td>
+      <td style="text-align:right;color:#a06000">${cut||'—'}</td>
+      <td style="text-align:right">${fmt(p.total_vol||0)}</td>
+      <td style="text-align:right">${estHtml}</td>
+    </tr>`;
+  }).join('');
+  // ② 开盘执行：从 snapshot 的 execution.records 统计（动作状态用当前 LIVE 内存态查）
+  let doneCnt=0, pendCnt=0, failCnt=0, totalExec=0;
+  const allActions = pm.all_actions || [];
+  allActions.forEach(a=>{
+    totalExec++;
+    const st = actionStatus(a.combo||combo, a);
+    if(st.t==='✓ 成交') doneCnt++; else if(st.t==='⏳ 挂单') pendCnt++; else if(st.t==='✗ 未成交') failCnt++;
+  });
+  const rate = totalExec ? (doneCnt/totalExec*100).toFixed(1)+'%' : '—';
+  const execRows = records.length
+    ? records.slice().reverse().map(x=>`<tr><td>${esc(x.at||'—')}</td><td style="text-align:left">${esc((AA[x.combo]||{}).name||x.combo)}</td><td style="text-align:right">${fmt(x.actions)} 笔</td><td style="text-align:center">${esc(x.group||'all')}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">当日尚未核准（数据齐后 19:30 起自动核准归档）</td></tr>';
+  const isToday = snap.date === todayStr();
+  return `
+  <div class="panel">
+    <h3>日记录 <span class="hint">持仓对齐页 ① 盘前计划 + ② 开盘执行 · 每日归档 · 点历史日期可调出</span></h3>
+    <div class="filterbar">
+      <span class="label" style="font-weight:500">日期：</span>
+      <input type="date" value="${esc(SNAP_DATE)}" onchange="setSnapDate(this.value)" style="padding:5px 8px">
+      <span class="muted">数据日 ${esc(snap.date||SNAP_DATE)} · ${isToday?'今天':'历史快照'}</span>
+      <span style="flex:1"></span>
+      <span class="muted">更新于 ${esc(String(snap.updated_at||'—').slice(11,19))}</span>
+    </div>
+    ${snap.note ? `<div class="empty" style="padding:24px">${esc(snap.note)}</div>` : `
+    <div class="panel" style="margin-bottom:12px">
+      <h3>① 盘前计划 <span class="hint">来源：${esc(snap.date)} 自动化归档</span></h3>
+      <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
+        ${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join('')}
+      </div>
+      <div class="trade-table-wrap" style="max-height:380px"><table>
+        <tr><th style="text-align:left">组合</th><th>类型</th><th>数据状态</th><th style="text-align:right">买开</th><th style="text-align:right">卖平</th><th style="text-align:right">加仓</th><th style="text-align:right">减仓</th><th style="text-align:right">预计手数</th><th style="text-align:right">预计保证金</th></tr>
+        ${rows||'<tr><td colspan="9" class="empty">该日无盘前计划数据</td></tr>'}
+      </table></div>
+    </div>
+    <div class="panel">
+      <h3>② 开盘执行 <span class="hint">来源：${esc(snap.date)} 核准时自动写入 · 只读</span></h3>
+      <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
+        <div class="card"><div class="label">已成交</div><div class="value" style="color:var(--down)">${doneCnt}${totalExec?' / '+totalExec:''}</div><div class="sub">${isToday?'实时':'历史'}</div></div>
+        <div class="card"><div class="label">挂单中</div><div class="value" style="color:#a06000">${pendCnt}</div><div class="sub">等待成交</div></div>
+        <div class="card"><div class="label">未成交</div><div class="value" style="color:var(--up)">${failCnt}</div><div class="sub">失败/无行情</div></div>
+        <div class="card"><div class="label">成交率</div><div class="value">${rate}</div><div class="sub">${isToday?'实时':'历史'}</div></div>
+      </div>
+      <table>
+        <tr><th>核准时间</th><th style="text-align:left">组合</th><th style="text-align:right">动作数</th><th style="text-align:center">分组</th></tr>
+        ${execRows}
+      </table>
+    </div>
+    `}
+  </div>`;
+}
+function setSnapDate(d){ SNAP_DATE = d; loadSnap(); }
 function setAlignFilter(f){ alignFilter=f; render(); }
 function setAlignAuto(){ alignAuto=!alignAuto; render(); }
-// 持仓对齐页自动刷新（仅该 Tab 激活时，读 /api/state 内存态；3 分钟刷新一次，避免过度请求）
-setInterval(()=>{ if(alignAuto && mainTab==='align') tryLive(); }, 180000);
+// 持仓对齐页自动刷新（仅该 Tab 激活时，读 /api/state 内存态；60s 刷新，与页面"自动刷新 60s"一致）
+setInterval(()=>{ if(alignAuto && (mainTab==='align'||mainTab==='calibrate')) tryLive(); }, 60000);
 function svgSimLine(ts, vals){
   if(!vals || vals.length<2) return '<div class="empty">暂无数据</div>';
   const w=720,h=200,pad=30,n=vals.length;
