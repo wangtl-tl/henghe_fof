@@ -338,7 +338,8 @@ let CALIB = null;   // 数据校准三段式数据（/api/align_detail）
 let SNAP = null;    // 日记录每日快照（/api/daily_snapshots）
 let CALIB_COMBO = null; // 数据校准 tab 当前展示组合（跳转后保持）
 let CALIB_DATE = '';    // 数据校准 tab 历史日期（空=今天实时）
-let TODAY_FILLS = {};   // 2026-08-30：{combo: Set(symbol)} 今日真实成交（/api/today_trades）
+let TODAY_FILLS = {};   // 2026-08-30：{combo: Set(symbol)} 今日真实成交（/api/today_trades，按完整合约代码去重）
+let TODAY_FILLS_VARIETY = {};  // 2026-09-02：{combo: Set(variety)} 今日成交的品种级聚合（大写，匹配 plan.actions.variety）
 let TODAY_TRADES = {};  // 2026-08-30：{combo: [trade,...]} 今日成交明细（持仓分析"成交记录"按日过滤）
 async function tryLive(){
   // 2026-08-30：原实现 7 个 fetch 串行 await（行 320-360 顺序）→ 换组合时总耗时 = sum(各 fetch 时间)，很卡。
@@ -368,7 +369,16 @@ async function tryLive(){
   if(sl.status==='fulfilled' && sl.value && sl.value.sim_metrics){ window.__SIMMETRICS=window.__SIMMETRICS||{}; window.__SIMMETRICS[c]=sl.value.sim_metrics; window.__SIMDD=window.__SIMDD||{}; window.__SIMDD[c]=sl.value.sim_drawdown||[]; window.__SIMDAYS=window.__SIMDAYS||{}; window.__SIMDAYS[c]=sl.value.sim_sample_days; window.__SIMINSUF=window.__SIMINSUF||{}; window.__SIMINSUF[c]=sl.value.sim_insufficient; }
   if(ad.status==='fulfilled' && ad.value && ad.value.combo) CALIB = ad.value; else CALIB = null;
   if(ds.status==='fulfilled' && ds.value && ds.value.date) SNAP = ds.value; else SNAP = null;
-  if(tf.status==='fulfilled' && tf.value && tf.value.trades){ TODAY_FILLS[c] = new Set(tf.value.trades.map(x=>x.symbol)); TODAY_TRADES[c] = tf.value.trades; }
+  if(tf.status==='fulfilled' && tf.value && tf.value.trades){
+    const trades=tf.value.trades;
+    TODAY_FILLS[c] = new Set(trades.map(x=>x.symbol));
+    // 品种级聚合：从 CFFEX.IM2609 / DCE.jd2610 / SHFE.rb2610 等拆出裸品种码（去交易所前缀与末尾月份数字），统一大写
+    TODAY_FILLS_VARIETY[c] = new Set(trades.map(x=>{
+      const s=String(x.symbol||''); const m=s.match(/^[A-Z]+\.([A-Za-z]+)\d/)||s.match(/^([A-Za-z]+)\d/);
+      return m ? m[1].toUpperCase() : s.toUpperCase();
+    }));
+    TODAY_TRADES[c] = trades;
+  }
   render();
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
@@ -1184,11 +1194,14 @@ function actionClass(a){
   return {key:k, label:{buy:'买开',add:'加仓',sell:'卖平',cut:'减仓'}[k]};
 }
 function actionStatus(c, act){
-  // 2026-08-30：优先用"今日真实成交"（/api/today_trades，monitor_db trade_date_time 精确过滤当天）
-  const fills = TODAY_FILLS && TODAY_FILLS[c];
-  if(fills){
-    if(fills.has(act.symbol)) return {t:'✓ 今日成交', bg:'#e6f4ea;color:#1a7f37'};
-    return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
+  // 2026-09-02：优先用"今日真实成交"（品种级聚合 TODAY_FILLS_VARIETY 匹配 plan.actions.variety，兼容 CFFEX.IM2609 vs IM）
+  const fillVar = TODAY_FILLS_VARIETY && TODAY_FILLS_VARIETY[c];
+  const targetVar = String(act.variety||act.symbol||'').toUpperCase();
+  if(fillVar && targetVar && fillVar.has(targetVar)) return {t:'✓ 今日成交', bg:'#e6f4ea;color:#1a7f37'};
+  if(fillVar){
+    // 区分品种是否属于 day-only/夜盘等不可成交窗口，给出阶段化提示
+    const nightOnly = /(^[A-Za-z]+$)/.test(act.symbol||'') && /(IF|IH|IC|IM|T|TF|TS|JD|LH|PK|PD|PT)/.test(targetVar);
+    return {t: nightOnly ? '⏸ 白天盘' : '⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
   }
   // 兜底：旧 logs 逻辑（无 18081 / 今日成交未拉到）
   const logs = (LIVE&&LIVE[c]&&LIVE[c].logs)||[];
@@ -1366,7 +1379,7 @@ function modalAlignContent(c){
       <table><tr><th>品种</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">当前→目标</th><th style="text-align:center">状态</th></tr>${rows}</table>`;
   };
   const histNote = hist ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(modalHistDate)} 快照</span>` : '';
-  const todayFillCnt = (TODAY_FILLS && TODAY_FILLS[c]) ? TODAY_FILLS[c].size : 0;
+  const todayFillCnt = (TODAY_FILLS_VARIETY && TODAY_FILLS_VARIETY[c]) ? TODAY_FILLS_VARIETY[c].size : 0;
   const todayChip = (hist ? '' : `<span class="legend-chip" style="background:${todayFillCnt?'#e6f4ea':'#f0f4fa'};color:${todayFillCnt?'#1a7f37':'#57606a'}">今日已成交 ${todayFillCnt} 个品种</span>`);
   const planAt = hist ? String(hist.timestamps&&hist.timestamps.plan_built_at||'').slice(11,16) : '';
   return `<h3>${nm} · 盘前计划详情 ${histNote} ${todayChip}</h3>
@@ -1522,7 +1535,7 @@ function modalCompareContent(c){
   }).join('')||'<tr><td colspan="7" class="empty">无数据</td></tr>';
   const nm = esc((d.name||c).replace('组合','').replace('全能主','').replace('优质',''));
   const histNote = hist ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(modalHistDate)} 快照</span>` : '';
-  const todayFillCnt = (TODAY_FILLS && TODAY_FILLS[c]) ? TODAY_FILLS[c].size : 0;
+  const todayFillCnt = (TODAY_FILLS_VARIETY && TODAY_FILLS_VARIETY[c]) ? TODAY_FILLS_VARIETY[c].size : 0;
   const todayChip = (hist ? '' : `<span class="legend-chip" style="background:${todayFillCnt?'#e6f4ea':'#f0f4fa'};color:${todayFillCnt?'#1a7f37':'#57606a'}">今日已成交 ${todayFillCnt} 个品种</span>`);
   const planAt = hist ? String(hist.timestamps&&hist.timestamps.plan_built_at||'').slice(11,16) : '';
   return `<h3>${nm} · 原组合 ↔ 跟投账户 品种对照 ${histNote} ${todayChip}</h3>
@@ -1581,7 +1594,7 @@ function rPostExec(phase){
     ((p&&p.actions)||[]).forEach(a=>{
       totalExec++;
       const st = actionStatus(c, a);
-      if(st.t==='✓ 成交') doneCnt++; else if(st.t==='⏳ 挂单') pendCnt++; else if(st.t==='✗ 未成交') failCnt++;
+      if(st.t==='✓ 今日成交' || st.t==='✓ 成交') doneCnt++; else if(st.t==='⏳ 挂单') pendCnt++; else if(st.t==='✗ 未成交') failCnt++;
       const row={c, act:a, st};
       if(a.session==='night') nightActs.push(row);
       else if(a.session==='index') idxActs.push(row);
@@ -1782,7 +1795,7 @@ function rCalibrate(){
     </div>
   </div>
   <div class="panel">
-    <h3>③ 动作计划 <span class="hint">共 ${acts.length} 笔 · 21:00 夜盘 / 次日 09:00 撮合 · ${CALIB_DATE?'历史快照':'今日已成交 '+(TODAY_FILLS[c]?TODAY_FILLS[c].size:0)+' 个品种'}</span></h3>
+    <h3>③ 动作计划 <span class="hint">共 ${acts.length} 笔 · 21:00 夜盘 / 次日 09:00 撮合 · ${CALIB_DATE?'历史快照':'今日已成交 '+(TODAY_FILLS_VARIETY[c]?TODAY_FILLS_VARIETY[c].size:0)+' 个品种'}</span></h3>
     <div class="trade-table-wrap" style="max-height:300px"><table>
       <tr><th style="text-align:left">品种</th><th style="text-align:center">方向</th><th style="text-align:center">开平</th><th style="text-align:right">手数</th><th style="text-align:right">当前→目标</th><th style="text-align:center">批次</th><th style="text-align:center">状态</th></tr>
       ${actRows}
