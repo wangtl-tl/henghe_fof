@@ -234,6 +234,17 @@ function fmtHHMM(s){
   const m = String(s).match(/(\d{2}):(\d{2})/);
   return m ? m[1]+':'+m[2] : '—';
 }
+// 2026-09-03：成交记录时间前加日期。优先用 trade_date_time（tqsdk 纳秒），其次用 tstr（兼容历史）。
+// 纳秒 → 本地时间 YYYY-MM-DD HH:MM:SS（带秒便于排序核对）；空值回退 '—'
+function fmtTradeAt(t){
+  const ns = t && t.trade_date_time;
+  if(typeof ns==='number' && ns>0){
+    const d = new Date(ns/1e6);  // ms
+    const p=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  return (t && t.tstr) || '—';
+}
 // 2026-08-30：取某组合最新一次结算日期（来自 /api/settlement 实时列表，tryLive 已写入 window.__SETL[combo]）
 function latestSettleDate(c){
   const list = (window.__SETL && window.__SETL[c]) || [];
@@ -867,7 +878,7 @@ function rPositions(D){
   // 成交记录（2026-08-30：今日真实成交优先，与动作状态口径一致；今日无则显示历史最近 30 笔）
   const trades = todayTr.length ? todayTr : (sim.trades||[]).slice(-30).reverse();
   const tradeRows = trades.map(t=>`<tr>
-    <td>${esc(t.tstr||'')}</td><td>${esc(t.symbol||'')}</td>
+    <td>${esc(fmtTradeAt(t))}</td><td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
     <td>${t.offset==='OPEN'?'开':'平'}</td>
     <td>${fmt(t.volume)}</td><td>${fmt(t.price,2)}</td>
@@ -1045,7 +1056,7 @@ function modalSettlementContent(c, date, data){
   }).join('')||'<tr><td colspan="7" class="empty">该日无持仓快照（需 15:30 结算时自动生成）</td></tr>';
   // 成交记录
   const tradeRows = trades.slice().reverse().map(t=>`<tr>
-    <td>${esc(t.tstr||'—')}</td><td>${esc(t.symbol||'')}</td>
+    <td>${esc(fmtTradeAt(t))}</td><td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
     <td>${t.offset==='OPEN'?'开':'平'}</td>
     <td style="text-align:right">${fmt(t.volume)}</td>
