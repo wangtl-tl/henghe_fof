@@ -234,16 +234,20 @@ function fmtHHMM(s){
   const m = String(s).match(/(\d{2}):(\d{2})/);
   return m ? m[1]+':'+m[2] : '—';
 }
-// 2026-09-03：成交记录时间前加日期。优先用 trade_date_time（tqsdk 纳秒），其次用 tstr（兼容历史）。
-// 纳秒 → 本地时间 YYYY-MM-DD HH:MM:SS（带秒便于排序核对）；空值回退 '—'
-function fmtTradeAt(t){
+// 2026-09-03：成交记录时间前加日期。
+// 1) 优先 tqsdk trade_date_time 纳秒（重启后 tqsim_monitor 写入的字段）
+// 2) 否则用"当前数据日"（调用处传入 fallDate）+ tstr 拼接，所有历史成交都带日期
+// 3) 完全没值回退 '—'
+function fmtTradeAt(t, fallDate){
   const ns = t && t.trade_date_time;
   if(typeof ns==='number' && ns>0){
     const d = new Date(ns/1e6);  // ms
     const p=n=>String(n).padStart(2,'0');
     return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
-  return (t && t.tstr) || '—';
+  const tstr = (t && t.tstr) || '';
+  if(!tstr) return '—';
+  return `${(fallDate && fallDate!=='—') ? fallDate : todayStr()} ${tstr}`;
 }
 // 2026-08-30：取某组合最新一次结算日期（来自 /api/settlement 实时列表，tryLive 已写入 window.__SETL[combo]）
 function latestSettleDate(c){
@@ -873,12 +877,14 @@ function rPositions(D){
       <td>${fmt(wan(p.margin,0),0)}万</td></tr>`;
   }).join('');
   // 2026-08-30：成交记录按"今日真实成交"（/api/today_trades）优先，与动作状态口径一致；今日无则 fallback 历史 30 笔
+  // 2026-09-03：提前算 ddTxt，作为 fmtTradeAt 的日期 fallback（tqsdk trade_date_time 没回填时也能展示日期）
+  const ddTxt = latestSettleDate(combo) || (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
   const todayTr = (TODAY_TRADES && TODAY_TRADES[combo]) || [];
   const lastTrade = (sim.trades && sim.trades.length) ? sim.trades[sim.trades.length-1] : null;
   // 成交记录（2026-08-30：今日真实成交优先，与动作状态口径一致；今日无则显示历史最近 30 笔）
   const trades = todayTr.length ? todayTr : (sim.trades||[]).slice(-30).reverse();
   const tradeRows = trades.map(t=>`<tr>
-    <td>${esc(fmtTradeAt(t))}</td><td>${esc(t.symbol||'')}</td>
+    <td>${esc(fmtTradeAt(t, ddTxt))}</td><td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
     <td>${t.offset==='OPEN'?'开':'平'}</td>
     <td>${fmt(t.volume)}</td><td>${fmt(t.price,2)}</td>
@@ -890,8 +896,7 @@ function rPositions(D){
   // 时段灯
   const seg = segLabel();
   const liveTag = LIVE ? '<span class="muted" style="font-size:12px">· 实时连接 18081</span>' : '<span class="muted" style="font-size:12px">· 快照模式（本地访问自动实时）</span>';
-  // 2026-08-30：数据日 = 结算日 + 就绪日（三页统一口径）
-  const ddTxt = latestSettleDate(combo) || (READY&&READY.date) || (sim.settle&&sim.settle.settle_date) || '—';
+  // 2026-08-30：数据日 = 结算日 + 就绪日（三页统一口径；ddTxt 已在上面 tradeRows 用之前计算过，这里只算 ddLabel）
   const ddLabel = dataDayLabel(combo);
   // 数据新鲜度：持仓 → LIVE.state_updated_at（TqSim 推送，每 3s wait_update 一次）；成交 → 今日明细；净值 → NAV 最后时间（10min 一次）
   const stateAt = (LIVE&&LIVE[combo]&&LIVE[combo].state_updated_at) || '';
@@ -1042,6 +1047,8 @@ function modalSettlementContent(c, date, data){
   const trades = data.trades || [];
   const closes = data.close_trades || [];
   const dayPnl = (data.balance||0) - (data.open_balance||0);
+  // 2026-09-03：data.trades 的 trade 可能还没重启回填 trade_date_time，用结算日 date 作 fallback
+  const dayFall = date || todayStr();
   // 持仓表（按品种聚合净手数）
   const posRows = posList.map(p=>{
     const sym=p.symbol||'';
@@ -1056,7 +1063,7 @@ function modalSettlementContent(c, date, data){
   }).join('')||'<tr><td colspan="7" class="empty">该日无持仓快照（需 15:30 结算时自动生成）</td></tr>';
   // 成交记录
   const tradeRows = trades.slice().reverse().map(t=>`<tr>
-    <td>${esc(fmtTradeAt(t))}</td><td>${esc(t.symbol||'')}</td>
+    <td>${esc(fmtTradeAt(t, dayFall))}</td><td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
     <td>${t.offset==='OPEN'?'开':'平'}</td>
     <td style="text-align:right">${fmt(t.volume)}</td>
