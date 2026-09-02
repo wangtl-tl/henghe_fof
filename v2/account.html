@@ -851,6 +851,9 @@ function rPositions(D){
       <td class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))}万</td>
       <td>${fmt(wan(p.margin,0),0)}万</td></tr>`;
   }).join('');
+  // 2026-08-30：成交记录按"今日真实成交"（/api/today_trades）优先，与动作状态口径一致；今日无则 fallback 历史 30 笔
+  const todayTr = (TODAY_TRADES && TODAY_TRADES[combo]) || [];
+  const lastTrade = (sim.trades && sim.trades.length) ? sim.trades[sim.trades.length-1] : null;
   // 成交记录（2026-08-30：今日真实成交优先，与动作状态口径一致；今日无则显示历史最近 30 笔）
   const trades = todayTr.length ? todayTr : (sim.trades||[]).slice(-30).reverse();
   const tradeRows = trades.map(t=>`<tr>
@@ -871,9 +874,6 @@ function rPositions(D){
   const ddLabel = dataDayLabel(combo);
   // 数据新鲜度：持仓 → LIVE.state_updated_at（TqSim 推送，每 3s wait_update 一次）；成交 → 今日明细；净值 → NAV 最后时间（10min 一次）
   const stateAt = (LIVE&&LIVE[combo]&&LIVE[combo].state_updated_at) || '';
-  // 2026-08-30：成交记录按"今日真实成交"（/api/today_trades）优先，与动作状态口径一致；今日无则 fallback 历史 30 笔
-  const todayTr = (TODAY_TRADES && TODAY_TRADES[combo]) || [];
-  const lastTrade = (sim.trades && sim.trades.length) ? sim.trades[sim.trades.length-1] : null;
   const lastTradeAt = lastTrade ? fmtHHMM(lastTrade.tstr||'') : '—';
   const updLbl = stateAt ? `实时（TqSim 推送）· 更新于 ${esc(fmtHHMM(stateAt))}`
                               : `${esc(liveTag.replace(/· /,'').replace(/<[^>]*>?/gm,''))} · 暂无刷新（休市/重启中）`;
