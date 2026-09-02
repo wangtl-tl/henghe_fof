@@ -85,8 +85,8 @@ details.method b{color:var(--blue)}
   <div class="section-title">核心结论 <span class="hint">基于 228825 笔成交 · 41/51 账户有有效成交（全量抓取）</span></div>
   <div class="kpi-bar">
     <div class="kpi-card"><div class="k-label">平均每笔价差</div><div class="k-value down">-20.05 点</div><div class="k-sub">盘手盘中 vs 核准时点价</div></div>
-    <div class="kpi-card"><div class="k-label">纯时点差中位</div><div class="k-value up">-3.34%</div><div class="k-sub">10 组合中位</div></div>
-    <div class="kpi-card"><div class="k-label">滑点 1 点/手</div><div class="k-value up">-33.50%</div><div class="k-sub">七重复合敏感性</div></div>
+    <div class="kpi-card"><div class="k-label">纯时点差中位</div><div class="k-value up">-15.79%</div><div class="k-sub">10 组合中位</div></div>
+    <div class="kpi-card"><div class="k-label">滑点 1 点/手</div><div class="k-value up">-33.50%</div><div class="k-sub">七重复合 · 短窗口 06-29~08-27 测算</div></div>
     <div class="kpi-card"><div class="k-label">跟踪误差中位</div><div class="k-value">10.32%</div><div class="k-sub">日净值偏离波动</div></div>
     <div class="kpi-card"><div class="k-label">逐笔样本</div><div class="k-value">228825</div><div class="k-sub">41 账户（部分）</div></div>
     <div class="kpi-card"><div class="k-label">手续费窗口</div><div class="k-value" style="color:var(--blue);font-size:17px">809 万</div><div class="k-sub">盘手真实手续费</div></div>
@@ -96,24 +96,24 @@ details.method b{color:var(--blue)}
   <table class="attr-table">
     <tr><th>维度</th><th>口径</th><th>量级</th></tr>
     <tr><td>① 时点差</td><td>228825 笔逐笔：盘手成交价 vs 核准时点价</td><td>均 -20.05 点/笔 · 累计 +3,241,370 元</td></tr>
-    <tr><td>② 滞后/时点（净值口径）</td><td>同构(收盘成交) vs 跟投(核准时点价)</td><td>组合均值 -6.24%（中位 -3.34%）</td></tr>
-    <tr><td>④ 滑点敏感性</td><td>七重复合纯时点差随滑点变化（每手价格单位）</td><td>滑点0点: -3.34% · 滑点1点: -33.50% · 滑点2点: -63.66%</td></tr>
+    <tr><td>② 滞后/时点（净值口径）</td><td>同构(收盘成交) vs 跟投(核准时点价)</td><td>组合均值 -15.99%（中位 -15.79%）</td></tr>
+    <tr><td>④ 滑点敏感性</td><td>七重复合纯时点差随滑点变化（每手价格单位）· 短窗口 06-29~08-27 测算，与上方长窗口口径不同</td><td>滑点0点: -3.34% · 滑点1点: -33.50% · 滑点2点: -63.66%</td></tr>
     <tr><td>⑤ 手续费</td><td>盘手窗口内真实手续费（daily_pnl）</td><td>+8,093,314 元 / 每组合 +106,491 元</td></tr>
     <tr><td>③ 合约映射差</td><td>未单独量化</td><td>跟投按盘手原合约价格近似（同合约口径），远月vs主力价差未拆出</td></tr>
   </table>
 
   <div class="section-title">组合矩阵 <span class="hint">点击卡片切换下方净值曲线 · 按纯时点差排序</span></div>
   <div class="combo-grid" id="comboGrid">
-    <a class="combo-card" href="javascript:void(0)" onclick="setCombo('style_strategy',this)" data-c="style_strategy"><div class="c-name">风格策略<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-30.02%</b></div><div class="cm">跟踪误差 <b>17.99%</b></div><div class="cm">真实涨跌 <b class="up">+59.53%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('pure_profit',this)" data-c="pure_profit"><div class="c-name">纯利润<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-28.04%</b></div><div class="cm">跟踪误差 <b>18.07%</b></div><div class="cm">真实涨跌 <b class="down">-0.10%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('seven_composite',this)" data-c="seven_composite"><div class="c-name">七重复合<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-27.75%</b></div><div class="cm">跟踪误差 <b>19.39%</b></div><div class="cm">真实涨跌 <b class="down">-6.25%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_balanced',this)" data-c="scheme_balanced"><div class="c-name">策略均衡<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-19.07%</b></div><div class="cm">跟踪误差 <b>10.32%</b></div><div class="cm">真实涨跌 <b class="up">+24.72%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_growth',this)" data-c="scheme_growth"><div class="c-name">进取成长<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-18.14%</b></div><div class="cm">跟踪误差 <b>7.58%</b></div><div class="cm">真实涨跌 <b class="up">+41.70%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('sector_diversified',this)" data-c="sector_diversified"><div class="c-name">板块分散<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-15.79%</b></div><div class="cm">跟踪误差 <b>12.75%</b></div><div class="cm">真实涨跌 <b class="up">+1.19%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('risk_balanced',this)" data-c="risk_balanced"><div class="c-name">风险均衡<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-9.91%</b></div><div class="cm">跟踪误差 <b>9.39%</b></div><div class="cm">真实涨跌 <b class="down">-12.54%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_neutral',this)" data-c="scheme_neutral"><div class="c-name">多空中性<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-5.34%</b></div><div class="cm">跟踪误差 <b>4.63%</b></div><div class="cm">真实涨跌 <b class="up">+4.36%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_steady',this)" data-c="scheme_steady"><div class="c-name">稳健磐石<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-4.26%</b></div><div class="cm">跟踪误差 <b>5.25%</b></div><div class="cm">真实涨跌 <b class="up">+1.65%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
-<a class="combo-card" href="javascript:void(0)" onclick="setCombo('long_short',this)" data-c="long_short"><div class="c-name">多空对冲<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm">纯时点差 <b class="up">-1.57%</b></div><div class="cm">跟踪误差 <b>9.53%</b></div><div class="cm">真实涨跌 <b class="up">+3.18%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+    <a class="combo-card" href="javascript:void(0)" onclick="setCombo('style_strategy',this)" data-c="style_strategy"><div class="c-name">风格策略<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-30.02%</b></div><div class="cm">跟踪误差 <b>17.99%</b></div><div class="cm">真实涨跌 <b class="up">+59.53%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('pure_profit',this)" data-c="pure_profit"><div class="c-name">纯利润<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-28.04%</b></div><div class="cm">跟踪误差 <b>18.07%</b></div><div class="cm">真实涨跌 <b class="down">-0.10%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('seven_composite',this)" data-c="seven_composite"><div class="c-name">七重复合<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-27.75%</b></div><div class="cm">跟踪误差 <b>19.39%</b></div><div class="cm">真实涨跌 <b class="down">-6.25%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_balanced',this)" data-c="scheme_balanced"><div class="c-name">策略均衡<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-19.07%</b></div><div class="cm">跟踪误差 <b>10.32%</b></div><div class="cm">真实涨跌 <b class="up">+24.72%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_growth',this)" data-c="scheme_growth"><div class="c-name">进取成长<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-18.14%</b></div><div class="cm">跟踪误差 <b>7.58%</b></div><div class="cm">真实涨跌 <b class="up">+41.70%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('sector_diversified',this)" data-c="sector_diversified"><div class="c-name">板块分散<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-15.79%</b></div><div class="cm">跟踪误差 <b>12.75%</b></div><div class="cm">真实涨跌 <b class="up">+1.19%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('risk_balanced',this)" data-c="risk_balanced"><div class="c-name">风险均衡<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-9.91%</b></div><div class="cm">跟踪误差 <b>9.39%</b></div><div class="cm">真实涨跌 <b class="down">-12.54%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_neutral',this)" data-c="scheme_neutral"><div class="c-name">多空中性<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-5.34%</b></div><div class="cm">跟踪误差 <b>4.63%</b></div><div class="cm">真实涨跌 <b class="up">+4.36%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('scheme_steady',this)" data-c="scheme_steady"><div class="c-name">稳健磐石<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-4.26%</b></div><div class="cm">跟踪误差 <b>5.25%</b></div><div class="cm">真实涨跌 <b class="up">+1.65%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
+<a class="combo-card" href="javascript:void(0)" onclick="setCombo('long_short',this)" data-c="long_short"><div class="c-name">多空对冲<span class="c-tag">研究</span></div><div class="c-metrics"><div class="cm" title="跟投(核准时点价) − 同构(收盘价)：每天只跟一次的时点/滞后代价">纯时点差 <b class="up">-1.57%</b></div><div class="cm">跟踪误差 <b>9.53%</b></div><div class="cm">真实涨跌 <b class="up">+3.18%</b></div></div><div class="c-link">📊 查看净值曲线 →</div></a>
   </div>
 
   <div class="section-title">组合净值曲线 <span class="hint">蓝=盘手真实 · 灰=同构(收盘) · 绿=跟投(核准时点)</span></div>
@@ -156,9 +156,9 @@ details.method b{color:var(--blue)}
     <summary>📖 口径说明 / 方法与局限（点击展开）</summary>
     <ul>
       <li><b>盘手真实期末</b>：组合内盘手官网每日真实权益做<b>等权收益指数</b>（每个盘手先归一化到自身起点=1.0，再对当日有值盘手等权平均收益、复合到 3000 万起点）— 盘手自己操作的真实结果（终极参照）。坏值/缺失由相邻好值插值补齐，不污染曲线。</li>
-      <li><b>同构(收盘)期末</b>：用跟投同一套持仓逻辑（组合合并净持仓按资金缩放），假设当日收盘价就能成交、无手续费无滑点 — 理想基准。</li>
-      <li><b>跟投期末</b>：按真实核准逻辑（每晚 21:00 / 次日 09:00 / 09:30 三个时点）按时点价成交 + 手续费 — 现实。</li>
-      <li><b>纯时点差</b>：(跟投 − 同构) / 3000 万 — 只算"每天只跟一次"的时点/滞后代价。<b>负 = 跟投略差于收盘成交</b>。</li>
+      <li><b>同构(收盘)期末</b>（灰线）：用跟投同一套持仓逻辑（组合合并净持仓按资金缩放），假设当日收盘价就能成交、无手续费无滑点 — 理想基准。</li>
+      <li><b>跟投期末</b>（绿线）：按真实核准逻辑（每晚 21:00 / 次日 09:00 / 09:30 三个时点）按时点价成交 + 手续费 — 现实。</li>
+      <li><b>纯时点差</b>（绿 − 灰）：(跟投期末 − 同构期末) ÷ 3000万 — 只算"每天只跟一次"的时点/滞后代价。<b>负 = 跟投吃亏</b>。</li>
       <li><b>滑点敏感性</b>：核准下单时每手多付/少付 N 个价位的模拟结果 — <b>1 点/手即可让纯时点差从 -3.3% 恶化到 -33.5%</b>，实盘核准建议<b>限价单 + 分批 + 不追价</b>。</li>
       <li><b>样本范围</b>：td 逐笔成交覆盖 <b>41 账户</b>（qu.iqx.me 平台限流未抓全 51 账户，后台补抓中，方向稳定）。回测窗口 <b>2025-09-26 ~ 2026-08-25</b>，持仓快照完整覆盖全部组合盘手。</li>
       <li><b>真实 vs 模拟</b>：盘手逐笔成交、每日权益/手续费、持仓快照 100% 来自官网 API（可复现）；核准时点价（A/C 组=T+1 开盘、B 组=当日结算价近似）、跟投账户净值、滑点 均为回测建模假设。</li>
@@ -213,7 +213,7 @@ function renderLongChart(c){
     {label:'同构(收盘)',data:n.same,borderColor:'#888780',borderWidth:1.6,pointRadius:0,fill:false,borderDash:[5,3]},
     {label:'跟投(核准时点)',data:n.follow,borderColor:'#0F6E56',borderWidth:2,pointRadius:0,fill:false}
   ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.parsed.y;return ctx.dataset.label+': ¥'+(v>=10000?(v/10000).toFixed(0)+' 万':v.toFixed(0)+' 元');}}}},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.parsed.y;if(v===null||v===undefined)return ctx.dataset.label+': 无成交数据';return ctx.dataset.label+': ¥'+(v>=10000?(v/10000).toFixed(0)+' 万':v.toFixed(0)+' 元');}}}},
     scales:{x:{ticks:{maxTicksLimit:8,font:{size:10}}},y:{ticks:{font:{size:10},callback:function(v){return v>=10000?'¥'+(v/10000).toFixed(0)+'万':'¥'+v.toFixed(0);}}}}}});
 }
 function setCombo(c,el){
