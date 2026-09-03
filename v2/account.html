@@ -1526,10 +1526,45 @@ function modalAlignContent(c){
     : (ts.got>0
       ? `<div class="ok-strip">✅ 单盘手跟投：${ts.got} 位盘手有数据，按已有数据跟投</div>`
       : `<div class="danger-strip">⚠️ 单盘手数据未取到，暂无法生成动作</div>`);
-  // 动作按批次
+  // 动作按批次（2026-09-03 升级：动态标题 + 成交统计 + 异常优先排序）
   const night=[], idx=[], day=[];
   a2.forEach(a=>{ const r={a}; if(a.session==='night')night.push(r); else if(a.session==='index')idx.push(r); else day.push(r); });
-  const batchTable = (list, title)=>{
+  const BATCH_DEF = [
+    {key:'night', list:night, at:21*60,    lbl:'21:00', nm:'夜盘', icon:'🟢', pre:'今晚'},
+    {key:'index', list:idx,   at:9*60+30,  lbl:'09:30', nm:'股指', icon:'🔵', pre:'今日'},
+    {key:'day',   list:day,   at:9*60,     lbl:'09:00', nm:'日盘', icon:'🌅', pre:'今日'},
+  ].filter(b=>b.list.length);
+  const _nm = nowHM();
+  BATCH_DEF.forEach(b=>{
+    let done=0, wait=0, fail=0, pend=0;
+    if(!hist){   // 历史快照无今日成交数据，跳过状态判定
+      b.list.forEach(({a})=>{ const k=actionStatus(c,a).kind; if(k==='done')done++; else if(k==='fail')fail++; else if(k==='pending')pend++; else wait++; });
+    }
+    b.st={done,wait,fail,pend};
+    b.passed = !hist && (_nm >= b.at);                          // 批次时刻是否已过
+    b.rank = hist ? 0 : (b.st.fail>0 ? 0 : (b.passed ? 1 : 2)); // 异常优先 → 已执行 → 未来批次
+    b.title = hist ? `${b.icon} ${b.nm}批次 · ${b.lbl}`
+      : (b.passed ? `${b.icon} ${b.nm}批次 · ${b.lbl} 已执行`
+                  : `${b.icon} ${b.nm}批次 · ${b.pre==='今晚'?'今晚':'次日'} ${b.lbl} 执行`);
+  });
+  BATCH_DEF.sort((x,y)=> x.rank-y.rank || x.at-y.at);
+  const batchStatChip = (b)=>{
+    if(hist) return '';
+    const s=b.st, seg=[];
+    if(s.done) seg.push(`<span style="color:#1a7f37">✓${s.done}</span>`);
+    if(s.fail) seg.push(`<span style="color:#cf222e">✗${s.fail}</span>`);
+    if(s.wait) seg.push(`<span style="color:#57606a">⏳${s.wait}</span>`);
+    if(s.pend) seg.push(`<span style="color:#a06000">⏱${s.pend}</span>`);
+    return seg.length ? `<span style="font-weight:400;font-size:12px;margin-left:6px">${seg.join(' ')}</span>` : '';
+  };
+  const batchSummary = (!hist && BATCH_DEF.length) ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:12px">
+    <span style="color:var(--sub);font-weight:500">全天执行汇总</span>
+    ${BATCH_DEF.map(b=>{
+      const s=b.st, bg = s.fail>0 ? '#fde8e8;color:#cf222e' : (s.done>0 ? '#e6f4ea;color:#1a7f37' : '#f0f4fa;color:#57606a');
+      return `<span class="legend-chip" style="background:${bg}">${b.nm} ${b.lbl} · ${s.done}/${b.list.length} 已成交${s.fail?` · ⚠️${s.fail} 未成交`:''}</span>`;
+    }).join('')}
+  </div>` : '';
+  const batchTable = (list, title, stat)=>{
     if(!list.length) return '';
     const rows = list.map(({a})=>{
       const sts = actionStatus(c, a);
@@ -1540,7 +1575,7 @@ function modalAlignContent(c){
         <td style="text-align:right" class="muted">${fmt(a.cur)} → ${fmt(a.target)}</td>
         <td style="text-align:center"><span class="legend-chip" style="background:${sts.bg}">${sts.t}</span></td></tr>`;
     }).join('');
-    return `<div class="batch-title">${title} · ${list.length} 笔</div>
+    return `<div class="batch-title">${title} · ${list.length} 笔 ${stat||''}</div>
       <table><tr><th>品种</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">当前→目标</th><th style="text-align:center">状态</th></tr>${rows}</table>`;
   };
   const histNote = hist ? `<span class="legend-chip" style="background:#e6f1fb;color:#185fa5">📅 ${esc(modalHistDate)} 快照</span>` : '';
@@ -1561,11 +1596,10 @@ function modalAlignContent(c){
   ${strip}
   <div style="color:var(--sub);font-size:12px;margin-bottom:6px">盘手明细（${ts.got}/${ts.total||accs.length} 已取数）</div>
   <div class="trader-mini">${traderHtml}</div>
-  ${a2.length ? `<div style="color:var(--sub);font-size:12px;margin-bottom:6px">今晚动作清单（${a2.length} 笔 · 全部品种）</div>
-    ${batchTable(night,'🟢 夜盘批次 · 21:00 执行')}
-    ${batchTable(idx,'🔵 股指批次 · 09:30 执行')}
-    ${batchTable(day,'🌅 次日批次 · 09:00 撮合')}
-    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}</span></div>`
+  ${a2.length ? `<div style="color:var(--sub);font-size:12px;margin-bottom:6px">动作清单（${a2.length} 笔 · 全部品种）</div>
+    ${batchSummary}
+    ${BATCH_DEF.map(b=>batchTable(b.list,b.title,batchStatChip(b))).join('')}
+    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}${hist?'':' · 批次按「异常优先」排序'}</span></div>`
     : '<div class="empty">该组合暂无动作（持仓已对齐）</div>'}
   <div class="modal-footer">
     <button style="padding:6px 14px;border-radius:8px;border:0.5px solid var(--line);background:#fff;cursor:pointer" onclick="closeAlignModal()">关闭</button>
