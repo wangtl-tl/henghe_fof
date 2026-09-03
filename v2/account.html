@@ -1525,6 +1525,29 @@ function openAlignModal(c){
   box.dataset.kind = 'align';
   box.innerHTML = modalAlignContent(COMBOS[alignModalIdx]);
   document.getElementById('alignModal').classList.add('open');
+  // 2026-09-03：弹窗级兜底 — 直接 fetch 当前 combo 的 today_trades，避免 tryLive 没拉到该 combo 时表格全"待执行"
+  ensureFillsForCombo(COMBOS[alignModalIdx]).then(()=>renderModalBody());
+}
+async function ensureFillsForCombo(c){
+  if(!c) return;
+  // 若已有数据且 30s 内拉过，则跳过（避免重复 fetch）
+  const cur = window.__FILL_FETCH_AT || (window.__FILL_FETCH_AT={});
+  const last = cur[c]||0;
+  if(Date.now()-last < 30000 && TODAY_FILLS_VARIETY[c] && TODAY_FILLS_VARIETY[c].size>0) return;
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/today_trades?combo='+c, {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json();
+    if(!j || !j.trades) return;
+    const trades = j.trades;
+    TODAY_FILLS[c] = new Set(trades.map(x=>x.symbol));
+    TODAY_FILLS_VARIETY[c] = new Set(trades.map(x=>{
+      const s=String(x.symbol||''); const m=s.match(/^[A-Z]+\.([A-Za-z]+)\d/)||s.match(/^([A-Za-z]+)\d/);
+      return m ? m[1].toUpperCase() : s.toUpperCase();
+    }));
+    TODAY_TRADES[c] = trades;
+    cur[c] = Date.now();
+  }catch(e){ /* ignore */ }
 }
 function closeAlignModal(){
   document.getElementById('alignModal').classList.remove('open');
@@ -1532,7 +1555,7 @@ function closeAlignModal(){
 function modalNav(d){
   alignModalIdx = (alignModalIdx + d + COMBOS.length) % COMBOS.length;
   if(modalHistDate){ modalLoadDate(COMBOS[alignModalIdx], modalHistDate); }
-  else renderModalBody();
+  else { renderModalBody(); ensureFillsForCombo(COMBOS[alignModalIdx]).then(()=>renderModalBody()); }
 }
 // 弹窗：原组合 ↔ 跟投账户 品种逐项对照
 function compareByVariety(c){
