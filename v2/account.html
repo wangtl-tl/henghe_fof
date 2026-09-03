@@ -1467,8 +1467,15 @@ function rPrePlan(){
     for(const c of COMBOS){ const p=ACTIONS&&ACTIONS[c]; if(p&&p.plan_built_at) return String(p.plan_built_at).slice(0,16); }
     return READY&&READY.date ? String(READY.date) : todayStr();
   })();
+  // 2026-09-03 晚：目标数据日 —— 白天 = 当天执行中的数据（前一晚 ~20:30 生成）；
+  // 晚 ~20:30 新数据落地（combo_positions.js 重建）后，18081 热更新自动切换到新目标，无需重启。
+  const dataDate = (()=>{
+    for(const c of COMBOS){ const p=ACTIONS&&ACTIONS[c]; if(p&&p.data_date) return p.data_date; }
+    return (READY&&READY.date) || '';
+  })();
+  const ddFresh = dataDate === todayStr();
   return `<div class="panel" style="margin-bottom:12px">
-    <h3>① 盘前计划 <span class="hint">开盘前该做的 · 计划生成 <b>${esc(planDate)}</b> · 点击行查看详情弹窗 · 右列「校准」进入数据校准页</span></h3>
+    <h3>① 盘前计划 <span class="hint">开盘前该做的 · 目标数据日 <b>${esc(dataDate||'—')}</b> ${ddFresh?'<span class="legend-chip" style="background:#e6f4ea;color:#1a7f37">今日新数据</span>':'<span class="legend-chip" style="background:#f0f4fa;color:#57606a">当日执行中数据</span>'} · 计划重建 <b>${esc(planDate)}</b> · 晚间新数据落地（约 20:30）后自动切换 · 点击行查看详情弹窗 · 右列「校准」进入数据校准页</span></h3>
     <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
       <div class="card"><div class="label">待执行组合</div><div class="value">${todo} / 10</div><div class="sub">有差异待补单</div></div>
       <div class="card"><div class="label">总动作</div><div class="value">${acts} 笔</div><div class="sub">多单/空单净变化合计</div></div>
