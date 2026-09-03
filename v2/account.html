@@ -393,6 +393,11 @@ async function tryLive(){
   if(ac.status==='fulfilled' && ac.value) ACTIONS = ac.value; else ACTIONS = null;
   if(pl.status==='fulfilled' && pl.value) POLL = pl.value; else POLL = null;
   if(sl.status==='fulfilled' && sl.value && sl.value.settlements){ window.__SETL=window.__SETL||{}; window.__SETL[c]=sl.value.settlements; }
+  // 2026-09-03：校准页/历史页可能看非全局 combo → 补齐其 settlement（数据日标签 + 历史 KPI 依赖 __SETL）
+  if(cc !== c){
+    const sl2 = await f('http://127.0.0.1:18081/api/settlement?combo='+cc);
+    if(sl2 && sl2.settlements){ window.__SETL=window.__SETL||{}; window.__SETL[cc]=sl2.settlements; }
+  }
   if(sl.status==='fulfilled' && sl.value && sl.value.sim_metrics){ window.__SIMMETRICS=window.__SIMMETRICS||{}; window.__SIMMETRICS[c]=sl.value.sim_metrics; window.__SIMDD=window.__SIMDD||{}; window.__SIMDD[c]=sl.value.sim_drawdown||[]; window.__SIMDAYS=window.__SIMDAYS||{}; window.__SIMDAYS[c]=sl.value.sim_sample_days; window.__SIMINSUF=window.__SIMINSUF||{}; window.__SIMINSUF[c]=sl.value.sim_insufficient; }
   if(ad.status==='fulfilled' && ad.value && ad.value.combo) CALIB = ad.value; else CALIB = null;
   if(ds.status==='fulfilled' && ds.value && ds.value.date) SNAP = ds.value; else SNAP = null;
@@ -581,6 +586,9 @@ function switchCombo(c){
   combo = c; page = 1;
   history.replaceState(null,'','?combo='+c);
   render();
+  // 2026-09-03：切组合立即拉该组合的 settlement/NAV/today_trades，
+  // 否则 __SETL/LIVE_NAV 只有旧 combo 的值，历史数据页 KPI 与数据日标签会空白
+  tryLive();
 }
 // ---------- 各 Tab 渲染 ----------
 function render(){
@@ -933,8 +941,9 @@ function rPositions(D){
   const navTs = (navT.length ? navT[navT.length-1]/1000 : null) || (LIVE_NAV[combo]&&LIVE_NAV[combo].t&&LIVE_NAV[combo].t.length ? LIVE_NAV[combo].t[Math.max(0,LIVE_NAV[combo].t.length-1)] : null);
   return `
   <div class="cards" style="grid-template-columns:repeat(6,1fr)">${cards.map(c=>`<div class="card"><div class="label">${c[0]}</div><div class="value" style="font-size:18px">${c[1]}</div></div>`).join('')}</div>
-  <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换到对应组合的持仓分析</span></h3>
+  <div class="panel" style="margin-top:12px"><h3>10 组合切换 <span class="hint">点击切换组合 · 下方按钮在持仓分析 / 持仓对齐 / 数据校准 / 历史数据 之间联动（同一组合）</span></h3>
     <div class="chips-row">${comboChips}</div>
+    ${navBtns(combo)}
   </div>
   <div class="grid-3">
     <div class="panel"><h3>持仓明细 <span class="hint">共 ${positions.length} 条 · 数据日 ${esc(ddLabel)} · ${esc(updLbl)} · 点击表头排序</span></h3>
@@ -1048,8 +1057,12 @@ function rHistory(D){
       <td style="color:${s.risk_ratio>=80?'#cf222e':s.risk_ratio>=60?'#9a6700':'#1a7f37'}">${s.risk_ratio!==null&&s.risk_ratio!==undefined?Number(s.risk_ratio).toFixed(1)+'%':'—'}</td>
     </tr>`;
   }).join('');
+  // 2026-09-03：历史数据页原先没有组合切换入口，只能回持仓分析页切 combo —— 补上 chips + 三页导航
+  const histChips = COMBOS.map(x=>`<button class="chip-btn ${x===combo?'on':''}" onclick="switchCombo('${x}')">${esc(((AA[x]||{}).name||x).replace('组合','').replace('全能主','').replace('优质',''))}</button>`).join('');
   return `
   <div class="panel"><h3>历史数据 <span class="hint">每日结算单 · 来源：monitor_db settlements · <b>点日期</b>查看当日持仓 + 成交明细</span></h3>
+    <div class="chips-row">${histChips}</div>
+    ${navBtns(combo)}
     ${sumCard}
     <div class="filterbar">
       <span>共 <b>${fmt(total)}</b> 条结算记录 · 每页 ${histSize} 条</span>
@@ -1195,7 +1208,8 @@ function comboAlign(c){
   const d = AA[c]||{};
   const st = (LIVE && LIVE[c]) || null;
   // 跟投端（模拟账户实际持仓）
-  const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
+  const positions = ((st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]))
+    .filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
   const fSet = new Set(); let fLots=0, fMargin=0;
   positions.forEach(p=>{
     const s=(p.symbol||'').split('.').pop()||''; const m=s.match(/^[A-Za-z]+/);
@@ -1265,12 +1279,17 @@ function rAlignCards(){
   }).filter(Boolean).join('');
   return `<div class="align-cards">${cards||'<div class="empty" style="grid-column:1/-1">暂无匹配组合</div>'}</div>`;
 }
+// 2026-09-03：补全日盘阶段（原实现只在 20:30 之后分档，白天恒为 waiting，
+// 导致 09:00-15:00 日盘批次已执行却显示"等待夜盘开盘 21:00"）
 function phaseOf(){
+  const wd = new Date().getDay();
+  if(wd===0 || wd===6) return 'closed';             // 周末休市
   const hm = new Date().getHours()*60 + new Date().getMinutes();
-  if(hm < 20*60+30) return 'waiting';
-  if(hm < 21*60) return 'plan';
-  if(hm < 23*60) return 'exec';
-  return 'done';
+  if(hm < 9*60)        return 'preopen';            // 00:00-09:00 夜盘已收 · 待日盘
+  if(hm < 15*60)       return 'day';                // 09:00-15:00 日盘交易中
+  if(hm < 20*60+30)    return 'waiting';            // 15:00-20:30 数据获取中
+  if(hm < 21*60)       return 'plan';               // 20:30-21:00 盘前计划
+  return 'exec';                                     // 21:00-24:00 夜盘执行
 }
 function fmtCd(h,m){
   const now=new Date(), t=new Date(); t.setHours(h,m,0,0);
@@ -1282,36 +1301,91 @@ function actionClass(a){
   const k = a.offset==='OPEN' ? (a.cur===0?'buy':'add') : (a.target===0?'sell':'cut');
   return {key:k, label:{buy:'买开',add:'加仓',sell:'卖平',cut:'减仓'}[k]};
 }
+// ---------- 批次时刻感知（2026-09-03 重写） ----------
+// 后端 combo_executor/tqsim_monitor 按品种分三组，自动核准窗口为各时段正式开盘时刻起 15 分钟
+const SESSION_AT = { night: 21*60, day: 9*60, index: 9*60+30 };   // 夜盘21:00 / 日盘09:00 / 股指09:30
+const SESSION_LBL = { night:'21:00', day:'09:00', index:'09:30' };
+function nowHM(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function sessionKey(act){
+  if(act.session==='night'||act.session==='day'||act.session==='index') return act.session;
+  return act.night ? 'night' : 'day';
+}
+function sessionAt(act){ return SESSION_AT[sessionKey(act)]; }
+// 计划生成时刻（毫秒）；早于该时刻的成交属于"上一版计划"，不能用来标记本版动作
+function planBuiltMs(c){
+  const p = ACTIONS && ACTIONS[c];
+  const s = (p && (p.plan_built_at || p.built_at)) || '';
+  if(!s) return 0;
+  const ms = Date.parse(String(s).replace(' ', 'T'));
+  return isNaN(ms) ? 0 : ms;
+}
+// 该组合在【某批次当日时刻之后】的成交品种集合。
+// 注：/api/today_trades 按自然日返回，故"今日 00:00 + 批次分钟数"即为该批次触发时刻；
+//     不能用 plan_built_at 过滤 —— 计划每 15 分钟重建一次，成交永远早于最新计划，会恒判为未成交。
+function fillsSince(c, saHM){
+  const dayK = new Date().toDateString();
+  const k = c + '@' + saHM + '@' + dayK;
+  window.__FS = window.__FS||{}; window.__FSKEY = window.__FSKEY||{};
+  if(window.__FSKEY[k] === dayK && window.__FS[k]) return window.__FS[k];
+  const d0 = new Date(); d0.setHours(0,0,0,0);
+  const cut = d0.getTime() + saHM*60000;
+  const tr = (TODAY_TRADES && TODAY_TRADES[c]) || [];
+  const set = new Set();
+  tr.forEach(t=>{
+    const ns = Number(t.trade_date_time||0);
+    if(ns && (ns/1e6) < cut) return;   // 纳秒→毫秒；早于该批次时刻 → 属于更早的批次
+    const s=String(t.symbol||''); const m=s.match(/^[A-Z]+\.([A-Za-z]+)\d/)||s.match(/^([A-Za-z]+)\d/);
+    set.add(m ? m[1].toUpperCase() : s.toUpperCase());
+  });
+  window.__FS[k] = set; window.__FSKEY[k] = dayK;
+  return set;
+}
 function actionStatus(c, act){
-  // 2026-09-02：优先用"今日真实成交"（品种级聚合 TODAY_FILLS_VARIETY 匹配 plan.actions.variety，兼容 CFFEX.IM2609 vs IM）
-  const fillVar = TODAY_FILLS_VARIETY && TODAY_FILLS_VARIETY[c];
+  const sa = sessionAt(act);
   const targetVar = String(act.variety||act.symbol||'').toUpperCase();
-  if(fillVar && targetVar && fillVar.has(targetVar)) return {t:'✓ 今日成交', bg:'#e6f4ea;color:#1a7f37'};
-  if(fillVar){
-    // 区分品种是否属于 day-only/夜盘等不可成交窗口，给出阶段化提示
-    const nightOnly = /(^[A-Za-z]+$)/.test(act.symbol||'') && /(IF|IH|IC|IM|T|TF|TS|JD|LH|PK|PD|PT)/.test(targetVar);
-    return {t: nightOnly ? '⏸ 白天盘' : '⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
+  const tr = (TODAY_TRADES && TODAY_TRADES[c]) || null;
+  if(tr){
+    // ① 该批次时刻之后有该品种成交 → 已成交
+    if(targetVar && fillsSince(c, sa).has(targetVar))
+      return {t:'✓ 已成交', bg:'#e6f4ea;color:#1a7f37', kind:'done'};
+    // ② 批次时刻未到 → 等待（显示具体时刻，不再笼统写"待执行"）
+    if(nowHM() < sa)
+      return {t:'⏳ 待 '+SESSION_LBL[sessionKey(act)], bg:'#f0f4fa;color:#57606a', kind:'wait'};
+    // ③ 批次已过但无该品种成交 → 未成交
+    return {t:'✗ 批次未成交', bg:'#fde8e8;color:#cf222e', kind:'fail'};
   }
-  // 兜底：旧 logs 逻辑（无 18081 / 今日成交未拉到）
+  // 兜底：无 18081 / 今日成交未拉到 → 旧 logs 逻辑
   const logs = (LIVE&&LIVE[c]&&LIVE[c].logs)||[];
   const sym = act.symbol;
   const rel = logs.filter(l=>String(l).indexOf(sym)>=0);
-  if(!rel.length) return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
+  if(!rel.length) return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a', kind:'wait'};
   const last = String(rel[rel.length-1]);
-  if(last.indexOf('成交')>=0) return {t:'✓ 成交', bg:'#e6f4ea;color:#1a7f37'};
-  if(last.indexOf('挂单')>=0) return {t:'⏳ 挂单', bg:'#faebcc;color:#a06000'};
-  if(last.indexOf('失败')>=0||last.indexOf('跳过')>=0) return {t:'✗ 未成交', bg:'#fde8e8;color:#cf222e'};
-  return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a'};
+  if(last.indexOf('成交')>=0) return {t:'✓ 成交', bg:'#e6f4ea;color:#1a7f37', kind:'done'};
+  if(last.indexOf('挂单')>=0) return {t:'⏳ 挂单', bg:'#faebcc;color:#a06000', kind:'pending'};
+  if(last.indexOf('失败')>=0||last.indexOf('跳过')>=0) return {t:'✗ 未成交', bg:'#fde8e8;color:#cf222e', kind:'fail'};
+  return {t:'⏳ 待执行', bg:'#f0f4fa;color:#57606a', kind:'wait'};
+}
+// 时间戳安全格式化：'2026-09-03 09:52:21' → '09:52:21'；空值/'—' 原样返回（修复 slice(11,19) 返回空串）
+function fmtTs(s){
+  if(!s) return '—';
+  const str = String(s);
+  if(str.length >= 19) return str.slice(11,19);
+  if(str.length >= 8) return str.slice(-8);
+  return str;
 }
 function rAlign(){
-  const phase = phaseOf();
+  let phase = phaseOf();
   const phaseMap = {
-    waiting:{t:'数据获取中 · 19:30 起每 15 分钟轮询', c:'#ba7517'},
-    plan:{t:'盘前计划阶段 · 距 21:00 开盘 '+fmtCd(21,0), c:'#0969da'},
-    exec:{t:'开盘执行中 · 实时刷新', c:'#1a7f37'},
-    done:{t:'已收盘 · 当日执行汇总', c:'#57606a'},
+    closed: {t:'休市 · 周末不开盘', c:'#57606a'},
+    preopen:{t:'夜盘已收 · 日盘 09:00 开盘 '+fmtCd(9,0), c:'#0969da'},
+    day:    {t:'日盘交易中 · 09:00 批次已触发 · 实时刷新', c:'#1a7f37'},
+    waiting:{t:'日盘已收 · 数据获取中 · 19:30 起每 15 分钟轮询', c:'#ba7517'},
+    plan:   {t:'盘前计划阶段 · 距 21:00 开盘 '+fmtCd(21,0), c:'#0969da'},
+    exec:   {t:'夜盘执行中 · 实时刷新', c:'#1a7f37'},
   };
-  const dd = (READY&&READY.date)||(AA[combo]&&AA[combo].sim&&AA[combo].sim.settle&&AA[combo].sim.settle.settle_date)||'—';
+  if(!phaseMap[phase]) phase = 'waiting';
+  // 2026-09-03：三页统一口径 —— 与持仓分析/数据校准一致用 dataDayLabel（结算 X · 就绪 Y）
+  const dd = dataDayLabel(combo);
   const filters = ['all','已对齐','待核准','挂单中','异常'];
   return `
   <div class="ready-bar" style="cursor:pointer" onclick="toggleReadyDetail()" title="点击查看成员取数明细">📡 ${readinessHtml()}</div>
@@ -1341,7 +1415,9 @@ function rPrePlan(){
     const d = AA[c]||{};
     const a2 = (p&&p.actions)||[];
     if(!a2.length && !(p&&p.combo_type)) return null;
-    todo++; acts+=a2.length; vol+=(p.total_vol||0); est+=(p.est_margin||0);
+    todo++; acts+=a2.length; vol+=(p.total_vol||0);
+    // 2026-09-03：汇总口径与表格 estHtml 对齐 —— 净持仓且数据未取齐时表格显示 —，汇总也不该计入
+    est += ((p.combo_type && !p.data_ready) ? 0 : (p.est_margin||0));
     // 2026-08-30 方案D：多单/空单净变化（按方向聚合）
     // 多单变化 = 买开(加多) − 卖平(减多)；空单变化 = 卖开(加空) − 买平(减空)
     let buyOpen=0, sellClose=0, sellOpen=0, buyClose=0;
@@ -1562,7 +1638,9 @@ function compareByVariety(c){
   const cp = (window.EMBEDDED_COMBO_POSITIONS||{})[c]||[];
   const d = AA[c]||{};
   const st = (LIVE && LIVE[c]) || null;
-  const positions = (st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]);
+  // 2026-09-03：与持仓分析页同口径 —— 期权合约不参与品种对齐统计
+  const positions = ((st && st.positions) ? st.positions : ((d.sim&&d.sim.positions)||[]))
+    .filter(p=>!/^[A-Za-z]+\d+[cCpP]\d*$/.test((p.symbol||'').split('.').pop()||''));
   const oMap={}, fMap={};
   cp.forEach(r=>{
     const v=(r.variety||'').toUpperCase(); if(!v) return;
@@ -1693,28 +1771,33 @@ function compareNav(d){
 }
 function jumpFromModal(c){
   closeAlignModal();
-  combo = c; mainTab = 'positions'; page = 1;
+  gotoPositions(c);   // 2026-09-03：走统一入口（同步 combo + CALIB_COMBO + 立即拉数据）
   history.replaceState(null,'','?combo='+c);
-  render();
 }
 // ② 开盘执行：执行情况（当前快照 + 夜盘/次日批次明细）
 function rPostExec(phase){
-  let doneCnt=0, pendCnt=0, failCnt=0, totalExec=0;
+  let doneCnt=0, pendCnt=0, failCnt=0, waitCnt=0, totalExec=0;
   const nightActs=[], dayActs=[], idxActs=[];
   COMBOS.forEach(c=>{
     const p = (ACTIONS&&ACTIONS[c]);
     ((p&&p.actions)||[]).forEach(a=>{
       totalExec++;
       const st = actionStatus(c, a);
-      if(st.t==='✓ 今日成交' || st.t==='✓ 成交') doneCnt++; else if(st.t==='⏳ 挂单') pendCnt++; else if(st.t==='✗ 未成交') failCnt++;
+      // 2026-09-03：按 kind 归类（原按中文文案匹配，文案一改就统计错）
+      if(st.kind==='done') doneCnt++;
+      else if(st.kind==='pending') pendCnt++;
+      else if(st.kind==='fail') failCnt++;
+      else waitCnt++;                       // wait = 批次时刻未到，不计入成交率
       const row={c, act:a, st};
       if(a.session==='night') nightActs.push(row);
       else if(a.session==='index') idxActs.push(row);
       else dayActs.push(row);
     });
   });
-  const rate = totalExec ? (doneCnt/totalExec*100).toFixed(1)+'%' : '—';
-  const inExec = (phase==='exec'||phase==='done');
+  // 成交率分母只含"批次时刻已到"的动作（未到批次的不算失败）
+  const eligible = doneCnt + pendCnt + failCnt;
+  const rate = eligible ? (doneCnt/eligible*100).toFixed(1)+'%' : '—';
+  const inExec = (phase==='day'||phase==='exec');
   const execTable = (list, title, hint)=>{
     if(!list.length) return '';
     const rows = list.map(({c,act,st})=>{
@@ -1734,10 +1817,11 @@ function rPostExec(phase){
   };
   return `<div class="panel">
     <h3>② 开盘执行 <span class="hint">${inExec?'开盘后的实际成交情况 · 按批次区分':'等待开盘 · 当前为白盘收盘快照'}</span></h3>
-    <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
-      <div class="card"><div class="label">已成交</div><div class="value" style="color:var(--down)">${doneCnt}${totalExec?' / '+totalExec:''}</div><div class="sub">夜盘+次日合计</div></div>
+    <div class="cards" style="grid-template-columns:repeat(5,1fr);margin-bottom:10px">
+      <div class="card"><div class="label">已成交</div><div class="value" style="color:var(--down)">${doneCnt}${eligible?' / '+eligible:''}</div><div class="sub">批次已到 · 含夜盘/日盘</div></div>
       <div class="card"><div class="label">挂单中</div><div class="value" style="color:#a06000">${pendCnt}</div><div class="sub">等待成交</div></div>
-      <div class="card"><div class="label">未成交</div><div class="value" style="color:var(--up)">${failCnt}</div><div class="sub">失败/无行情</div></div>
+      <div class="card"><div class="label">未成交</div><div class="value" style="color:var(--up)">${failCnt}</div><div class="sub">批次已过·无成交</div></div>
+      <div class="card"><div class="label">待批次</div><div class="value" style="color:#57606a">${waitCnt}</div><div class="sub">未到执行时刻</div></div>
       <div class="card"><div class="label">成交率</div><div class="value">${rate}</div><div class="sub">${inExec?'实时':'—'}</div></div>
     </div>
     <div style="margin-bottom:6px"><span style="font-weight:500;font-size:13px">原组合 ↔ 跟投账户 · 当前快照</span> <span class="muted" style="font-size:11px">点击卡片查看详情</span></div>
@@ -1796,14 +1880,35 @@ function rAlignDetail(c){
 }
 function setAlignSel(c){ alignSel = (alignSel===c?null:c); render(); }
 // ---------- 数据校准 Tab（2026-08-29 新增） ----------
-function jumpToCalibrate(c){
-  // 2026-08-30：从持仓对齐跳入校准时也只设 CALIB_COMBO（保持其他 tab 不被影响）
-  CALIB_COMBO = c;
-  CALIB_DATE = '';
-  mainTab = 'calibrate';
-  page = 1;
-  tryLive();  // 拉取该组合 align_detail
-  render();
+function jumpToCalibrate(c){ gotoCalibrate(c); }
+// 2026-09-03：三页联动统一入口 —— 跳转时同时同步全局 combo 与 CALIB_COMBO，
+// 避免"对齐页看 A 组合 / 校准页还停在 B 组合"的口径错位
+function gotoAlign(c){
+  if(c){ combo = c; CALIB_COMBO = c; }
+  mainTab = 'align'; page = 1; render(); tryLive();
+}
+function gotoCalibrate(c){
+  if(c){ combo = c; CALIB_COMBO = c; }
+  CALIB_DATE = ''; mainTab = 'calibrate'; page = 1; render(); tryLive();
+}
+function gotoPositions(c){
+  if(c){ combo = c; CALIB_COMBO = c; }
+  mainTab = 'positions'; page = 1; render(); tryLive();
+}
+function gotoHistory(c){
+  if(c){ combo = c; CALIB_COMBO = c; }
+  mainTab = 'history'; page = 1; render(); tryLive();
+}
+// 通用跳转按钮（三页共用，当前页高亮禁用）
+function navBtns(c){
+  const cur = mainTab;
+  const b = (t, label, fn) => `<button class="chip-btn ${cur===t?'on':''}" onclick="${fn}" style="border-radius:14px;padding:4px 12px;font-size:12px">${label}</button>`;
+  return `<div class="chips-row" style="margin-top:0">
+    ${b('positions','📊 持仓分析',"gotoPositions('"+c+"')")}
+    ${b('align','🎯 持仓对齐',"gotoAlign('"+c+"')")}
+    ${b('calibrate','🔧 数据校准',"gotoCalibrate('"+c+"')")}
+    ${b('history','📁 历史数据',"gotoHistory('"+c+"')")}
+  </div>`;
 }
 function calibData(){
   const c = CALIB_COMBO || combo;
@@ -1877,12 +1982,13 @@ function rCalibrate(){
   <div class="panel" style="padding:12px 16px">
     <h3>数据校准 <span class="hint">原持仓 → 净持仓 → 计划 全链路比对 · 数据日 ${CALIB_DATE ? esc(data.date||'—') : esc(dataDayLabel(c))} · 跟投比例 ${((data.scale||0)*100).toFixed(2)}%</span> ${histTag}</h3>
     <div class="chips-row">${chips}</div>
+    ${navBtns(c)}
   </div>
   <div class="data-day-card" style="margin-bottom:12px">
-    <div class="dd-item"><span class="dd-label">⏱ 数据取完</span><span class="dd-value sm">${esc((ts.data_fetched_at||'—').slice(11,19))}</span></div>
-    <div class="dd-item"><span class="dd-label">📋 计划生成</span><span class="dd-value sm">${esc((ts.plan_built_at||'—').slice(11,19))}</span></div>
+    <div class="dd-item"><span class="dd-label">⏱ 数据取完</span><span class="dd-value sm">${esc(fmtTs(ts.data_fetched_at))}</span></div>
+    <div class="dd-item"><span class="dd-label">📋 计划生成</span><span class="dd-value sm">${esc(fmtTs(ts.plan_built_at))}</span></div>
     <div class="dd-item"><span class="dd-label">🆗 校准</span><span class="dd-value sm">${calT}</span></div>
-    <div class="dd-item"><span class="dd-label">🕒 最新</span><span class="dd-value sm">${esc((ts.last_updated_at||'—').slice(11,19))}</span></div>
+    <div class="dd-item"><span class="dd-label">🕒 最新</span><span class="dd-value sm">${esc(fmtTs(ts.last_updated_at))}</span></div>
     <div class="dd-item"><span class="dd-label">📅 历史记录</span><span class="dd-value sm"><input type="date" value="${esc(CALIB_DATE)}" onchange="setCalibDate(this.value)" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--line);border-radius:6px"></span></div>
     <div class="dd-item" style="margin-left:auto"><button style="border:0.5px solid var(--blue);background:var(--blue);color:#fff;border-radius:8px;padding:6px 16px;font-size:13px;cursor:pointer;${CALIB_DATE?'opacity:.5;cursor:not-allowed':''}" ${CALIB_DATE?'disabled':''} onclick="doCalibrate('${c}')">立即校准</button></div>
   </div>
