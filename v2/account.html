@@ -385,6 +385,8 @@ async function tryLive(){
     f('http://127.0.0.1:18081/api/daily_snapshots?date='+t),
     f('http://127.0.0.1:18081/api/today_trades?combo='+c),
   ]);
+  // 2026-09-03：calibrate 弹窗里要看任意组合的"今日成交品种" → 拉所有 10 组合的 today_trades，避免"全部待执行"
+  const tfAll = await Promise.allSettled(COMBOS.map(cc2 => f('http://127.0.0.1:18081/api/today_trades?combo='+cc2)));
   if(s.status==='fulfilled' && s.value) LIVE = s.value; else LIVE = null;
   if(r.status==='fulfilled' && r.value) READY = r.value;
   if(n.status==='fulfilled' && n.value && n.value.t) LIVE_NAV[c] = n.value;
@@ -404,6 +406,20 @@ async function tryLive(){
     }));
     TODAY_TRADES[c] = trades;
   }
+  // 2026-09-03：补齐其他组合的今日成交品种（弹窗内查 actionStatus 时需要）
+  tfAll.forEach((res, idx) => {
+    const cc2 = COMBOS[idx];
+    if(!cc2) return;
+    if(res.status==='fulfilled' && res.value && res.value.trades){
+      const trades = res.value.trades;
+      TODAY_FILLS[cc2] = new Set(trades.map(x=>x.symbol));
+      TODAY_FILLS_VARIETY[cc2] = new Set(trades.map(x=>{
+        const s=String(x.symbol||''); const m=s.match(/^[A-Z]+\.([A-Za-z]+)\d/)||s.match(/^([A-Za-z]+)\d/);
+        return m ? m[1].toUpperCase() : s.toUpperCase();
+      }));
+      TODAY_TRADES[cc2] = trades;
+    }
+  });
   render();
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
