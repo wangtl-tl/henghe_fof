@@ -169,6 +169,16 @@ svg{display:block;width:100%;height:auto}
 .warn-tag{display:inline-block;background:#fff4e0;color:#9a6a12;border:1px solid #f0c97a;border-radius:8px;padding:1px 8px;font-size:11px;margin-left:6px}
 .legend{font-size:12px;color:var(--sub)} .legend.nav{color:var(--blue)} .legend.sim{color:#c9871b}
 .dd-compare{display:flex;flex-direction:column;gap:10px}
+/* 2026-09-03：历史数据 4 张汇总卡（开仓笔数/平仓笔数/手续费/已实现） */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;border-left:3px solid var(--blue)}
+.kpi:nth-child(1){border-left-color:#185fa5}
+.kpi:nth-child(2){border-left-color:#cf222e}
+.kpi:nth-child(3){border-left-color:#c9871b}
+.kpi:nth-child(4){border-left-color:#1a7f37}
+.kpi-k{font-size:11px;color:var(--sub);margin-bottom:4px}
+.kpi-v{font-size:20px;font-weight:700;line-height:1.2}
+.kpi-sub{font-size:11px;color:var(--weak);margin-top:3px}
 .risk-table th:nth-child(2){color:var(--blue)} .risk-table th:nth-child(3){color:#c9871b}
 .risk-table td.sim{color:#c9871b}
 </style>
@@ -986,32 +996,52 @@ function rHistory(D){
   const pages = Math.max(1, Math.ceil(total/histSize));
   if(histPage > pages) histPage = pages;
   const pageList = list.slice((histPage-1)*histSize, histPage*histSize);
-  // 列：日期 | 账户权益 | 上日结存 | 当日结存 | 当日入金 | 当日出金 | 逐日盈亏 | 保证金占用 | 手续费 | 可用资金 | 风险度
+
+  // 2026-09-03：4 张汇总卡（累计，全部结算单）
+  const agg = list.reduce((s,r)=>({
+    trades: s.trades + (r.trade_count||0),
+    closes: s.closes + (r.close_count||0),
+    commission: s.commission + (r.day_commission||0),
+    realized: s.realized + (r.realized_pnl||r.day_close_profit||0),
+  }), {trades:0, closes:0, commission:0, realized:0});
+  const sumCard = `<div class="kpi-row" style="margin:8px 0 14px 0">
+    <div class="kpi"><div class="kpi-k">累计开仓笔数</div><div class="kpi-v">${fmt(agg.trades)}</div><div class="kpi-sub">${total} 个交易日</div></div>
+    <div class="kpi"><div class="kpi-k">累计平仓笔数</div><div class="kpi-v">${fmt(agg.closes)}</div><div class="kpi-sub">已实现盈亏笔</div></div>
+    <div class="kpi"><div class="kpi-k">累计手续费</div><div class="kpi-v">${fmt(agg.commission,0)}</div><div class="kpi-sub">元</div></div>
+    <div class="kpi"><div class="kpi-k">累计已实现盈亏</div><div class="kpi-v ${agg.realized>=0?'up':'down'}">${pnlTxt(agg.realized)}</div><div class="kpi-sub">含手续费</div></div>
+  </div>`;
+
+  // 列：日期 | 账户权益 | 上日结存 | 当日结存 | 逐日盈亏 | 开仓手数 | 成交额 | 平仓笔数 | 已实现 | 手续费 | 保证金占用 | 可用资金 | 风险度
+  // 移除「当日入金/出金」(本组合不应用，但保留数据列兼容)
   const rows = pageList.map(s=>{
-    const dPnl = (s.balance||0) - (s.open_balance||0);  // 逐日盈亏 = 结算权益 - 上日结存
+    const dPnl = (s.balance||0) - (s.open_balance||0);
+    const realized = s.realized_pnl || s.day_close_profit || 0;
     return `<tr style="cursor:pointer" onclick="openSettlementDetail('${esc(combo)}','${esc(s.settle_date||'')}')" title="点击查看当日持仓 + 成交明细">
       <td><b>${esc(s.settle_date||'—')}</b></td>
-      <td>${fmt(s.balance,0)}</td>
+      <td><b>${fmt(s.balance,0)}</b></td>
       <td>${fmt(s.open_balance,0)}</td>
       <td>${fmt(s.balance,0)}</td>
-      <td>0</td>
-      <td>0</td>
       <td class="${pnlCls(dPnl)}">${pnlTxt(dPnl)}</td>
+      <td style="text-align:right;font-weight:600;color:${(s.trade_count||0)>0?'#185fa5':'#999'}">${fmt(s.trade_count||0)}</td>
+      <td style="text-align:right">${fmt(wan(s.trade_volume||0,1),1)}万</td>
+      <td style="text-align:right;font-weight:600;color:${(s.close_count||0)>0?'#cf222e':'#999'}">${fmt(s.close_count||0)}</td>
+      <td class="${pnlCls(realized)}">${pnlTxt(realized)}</td>
+      <td>${fmt(s.day_commission,0)}</td>
       <td>${fmt(s.margin,0)}</td>
-      <td>${fmt(s.day_commission,1)}</td>
       <td>${fmt(s.available,0)}</td>
-      <td>${s.risk_ratio!==null&&s.risk_ratio!==undefined?Number(s.risk_ratio).toFixed(2)+'%':'—'}</td>
+      <td style="color:${s.risk_ratio>=80?'#cf222e':s.risk_ratio>=60?'#9a6700':'#1a7f37'}">${s.risk_ratio!==null&&s.risk_ratio!==undefined?Number(s.risk_ratio).toFixed(1)+'%':'—'}</td>
     </tr>`;
   }).join('');
   return `
   <div class="panel"><h3>历史数据 <span class="hint">每日结算单 · 来源：monitor_db settlements · <b>点日期</b>查看当日持仓 + 成交明细</span></h3>
+    ${sumCard}
     <div class="filterbar">
       <span>共 <b>${fmt(total)}</b> 条结算记录 · 每页 ${histSize} 条</span>
       <span class="muted">逐日盈亏 = 账户权益 − 上日结存（已扣除手续费）</span>
     </div>
     <div class="trade-table-wrap" style="max-height:none"><table>
-      <tr><th>日期</th><th>账户权益</th><th>上日结存</th><th>当日结存</th><th>当日入金</th><th>当日出金</th><th>逐日盈亏</th><th>保证金占用</th><th>手续费</th><th>可用资金</th><th>风险度</th></tr>
-      ${rows||'<tr><td colspan="11" class="empty">暂无结算记录（每日 15:30 生成）</td></tr>'}</table></div>
+      <tr><th>日期</th><th>账户权益</th><th>上日结存</th><th>当日结存</th><th>逐日盈亏</th><th>开仓手数</th><th>成交额</th><th>平仓笔数</th><th>已实现盈亏</th><th>手续费</th><th>保证金占用</th><th>可用资金</th><th>风险度</th></tr>
+      ${rows||'<tr><td colspan="13" class="empty">暂无结算记录（每日 15:30 生成）</td></tr>'}</table></div>
     <div class="pager">
       <span>第 ${histPage} / ${pages} 页 · 共 ${fmt(total)} 条</span>
       <button ${histPage<=1?'disabled':''} onclick="changeHistPage(-1)">上一页</button>
@@ -1061,14 +1091,31 @@ function modalSettlementContent(c, date, data){
       <td style="text-align:right" class="${pnlCls(p.profit)}">${pnlTxt(wan(p.profit,1))}万</td>
       <td style="text-align:right">${fmt(wan(p.margin,0),0)}万</td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">该日无持仓快照（需 15:30 结算时自动生成）</td></tr>';
-  // 成交记录
-  const tradeRows = trades.slice().reverse().map(t=>`<tr>
-    <td>${esc(fmtTradeAt(t, dayFall))}</td><td>${esc(t.symbol||'')}</td>
+  // 成交记录（开仓 OPEN + 平仓 CLOSE） 全部表格
+  const openOnly = trades.filter(t=>t.offset==='OPEN');
+  const closeOnly = trades.filter(t=>t.offset==='CLOSE'||t.offset==='CLOSETODAY');
+  const tradeRowHTML = (t, isClose)=>`<tr>
+    <td>${esc(fmtTradeAt(t, dayFall))}</td>
+    <td>${esc(t.symbol||'')}</td>
     <td class="${t.direction==='BUY'?'up':'down'}">${t.direction==='BUY'?'买':'卖'}</td>
-    <td>${t.offset==='OPEN'?'开':'平'}</td>
+    <td>${t.offset==='OPEN'?'开':(t.offset==='CLOSETODAY'?'平今':'平')}</td>
     <td style="text-align:right">${fmt(t.volume)}</td>
     <td style="text-align:right">${fmt(t.price,2)}</td>
-    <td style="text-align:right">${fmt(t.commission,1)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">该日无成交记录（夜盘 21:00 自动核准未触发 / 周末无交易）</td></tr>';
+    <td style="text-align:right">${fmt(t.commission,1)}</td>
+    ${isClose?`<td style="text-align:right" class="${pnlCls(t.close_pnl||t.profit||0)}">${pnlTxt(t.close_pnl||t.profit||0)}</td>`:''}
+  </tr>`;
+  const openRows = openOnly.map(t=>tradeRowHTML(t,false)).join('')||'<tr><td colspan="7" class="empty">当日无开仓</td></tr>';
+  // close_trades 是 FIFO 配对表（含 open_price / close_price / profit）—— 数据更完整
+  const closeRows = (closes.length?closes:closeOnly).map(c=>`<tr>
+    <td>${esc(dayFall+' '+(c.tstr||''))}</td>
+    <td>${esc(c.symbol||'')}</td>
+    <td class="${(c.direction==='BUY'||c.direction==='L')?'up':'down'}">${c.direction==='L'?'买平':c.direction==='S'?'卖平':(c.direction==='BUY'?'买':'卖')}</td>
+    <td>平</td>
+    <td style="text-align:right">${fmt(c.volume)}</td>
+    <td style="text-align:right">${fmt(c.open_price||c.price,2)}</td>
+    <td style="text-align:right">${fmt(c.close_price||c.price,2)}</td>
+    <td style="text-align:right" class="${pnlCls(c.profit||0)}"><b>${pnlTxt(c.profit||0)}</b></td>
+  </tr>`).join('')||'<tr><td colspan="8" class="empty">该日无平仓记录</td></tr>';
   return `<h3>${nm} · ${esc(date)} 详情 <span class="legend-chip" style="background:#e6f1fb;color:#185fa5">来源：monitor_db.settlements</span></h3>
   <div class="modal-nav">
     <button onclick="navSettle(-1)">◀ 前一日</button>
@@ -1079,6 +1126,7 @@ function modalSettlementContent(c, date, data){
     <span><span style="color:var(--text-secondary)">账户权益</span> <b>${fmt(data.balance,0)}</b></span>
     <span><span style="color:var(--text-secondary)">上日结存</span> <b>${fmt(data.open_balance,0)}</b></span>
     <span><span style="color:var(--text-secondary)">逐日盈亏</span> <b class="${dayPnl>0?'up':(dayPnl<0?'down':'')}">${pnlTxt(dayPnl)}</b></span>
+    <span><span style="color:var(--text-secondary)">已实现</span> <b class="${data.day_close_profit>0?'up':(data.day_close_profit<0?'down':'')}">${pnlTxt(data.day_close_profit||0)}</b></span>
     <span><span style="color:var(--text-secondary)">手续费</span> <b>${fmt(data.day_commission,1)}</b></span>
     <span><span style="color:var(--text-secondary)">可用资金</span> <b>${fmt(data.available,0)}</b></span>
     <span><span style="color:var(--text-secondary)">风险度</span> <b>${data.risk_ratio!==null&&data.risk_ratio!==undefined?Number(data.risk_ratio).toFixed(2)+'%':'—'}</b></span>
@@ -1090,11 +1138,18 @@ function modalSettlementContent(c, date, data){
       ${posRows}
     </table></div>
   </div>
-  <div class="panel">
-    <h3>② 当日成交记录 <span class="hint">开仓 ${trades.length} 笔 · 平仓 ${closes.length} 笔</span></h3>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>② 当日开仓记录 <span class="hint">${openOnly.length} 笔 · 来源：trades 表 OPEN</span></h3>
+    <div class="trade-table-wrap" style="max-height:220px"><table>
+      <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">开仓价</th><th style="text-align:right">手续费</th></tr>
+      ${openRows}
+    </table></div>
+  </div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>③ 当日平仓明细 <span class="hint">${closes.length} 笔 · 来源：close_trades（FIFO 配对，含开仓均价+平仓价+已实现）</span></h3>
     <div class="trade-table-wrap" style="max-height:260px"><table>
-      <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">价格</th><th style="text-align:right">手续费</th></tr>
-      ${tradeRows}
+      <tr><th>时间</th><th>合约</th><th>方向</th><th>开平</th><th style="text-align:right">手数</th><th style="text-align:right">开仓均价</th><th style="text-align:right">平仓价</th><th style="text-align:right">已实现盈亏</th></tr>
+      ${closeRows}
     </table></div>
   </div>
   <div class="modal-footer">
