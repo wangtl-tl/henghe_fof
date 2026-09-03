@@ -1543,9 +1543,12 @@ function modalAlignContent(c){
     b.st={done,wait,fail,pend};
     b.passed = !hist && (_nm >= b.at);                          // 批次时刻是否已过
     b.rank = hist ? 0 : (b.st.fail>0 ? 0 : (b.passed ? 1 : 2)); // 异常优先 → 已执行 → 未来批次
+    // 2026-09-03：夜盘品种在日盘照常交易，夜盘漏单改由次日 09:00 日盘补下（后端
+    //   SESS_TRADEABLE['day']=['day','night']）。原文案「今晚 21:00 执行」会被误读为
+    //   「只有夜盘能下」，补一句漏单兜底说明。
     b.title = hist ? `${b.icon} ${b.nm}批次 · ${b.lbl}`
-      : (b.passed ? `${b.icon} ${b.nm}批次 · ${b.lbl} 已执行`
-                  : `${b.icon} ${b.nm}批次 · ${b.pre==='今晚'?'今晚':'次日'} ${b.lbl} 执行`);
+      : (b.passed ? `${b.icon} ${b.nm}批次 · ${b.lbl} 已执行${b.key==='night'?' · 漏单日盘补':''}`
+                  : `${b.icon} ${b.nm}批次 · ${b.pre==='今晚'?'今晚':'次日'} ${b.lbl} 执行${b.key==='night'?' · 漏单次日日盘补':''}`);
   });
   BATCH_DEF.sort((x,y)=> x.rank-y.rank || x.at-y.at);
   const batchStatChip = (b)=>{
@@ -1599,7 +1602,7 @@ function modalAlignContent(c){
   ${a2.length ? `<div style="color:var(--sub);font-size:12px;margin-bottom:6px">动作清单（${a2.length} 笔 · 全部品种）</div>
     ${batchSummary}
     ${BATCH_DEF.map(b=>batchTable(b.list,b.title,batchStatChip(b))).join('')}
-    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}${hist?'':' · 批次按「异常优先」排序'}</span></div>`
+    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}${hist?'':' · 批次按「异常优先」排序 · 夜盘漏单次日日盘补'}</span></div>`
     : '<div class="empty">该组合暂无动作（持仓已对齐）</div>'}
   <div class="modal-footer">
     <button style="padding:6px 14px;border-radius:8px;border:0.5px solid var(--line);background:#fff;cursor:pointer" onclick="closeAlignModal()">关闭</button>
