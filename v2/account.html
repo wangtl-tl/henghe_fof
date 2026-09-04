@@ -276,6 +276,14 @@ function dataDayLabel(c){
 }
 
 // ---------- 组合切换 ----------
+function setCombo(c){
+  combo = c; page = 1;
+  const sel = document.getElementById('comboSel');
+  if(sel) sel.value = c;
+  history.replaceState(null,'','?combo='+c);
+  render();
+  tryLive();
+}
 function initComboSel(){
   const sel = document.getElementById('comboSel');
   COMBOS.forEach(c=>{
@@ -2328,7 +2336,7 @@ function rDeck(){
 
   // 逐组合判定六环节状态（全部基于字段，不依赖日志文案）
   const stepOf = (c)=>{
-    const a = ACTIONS[c]||{};
+    const a = (ACTIONS||{})[c]||{};
     const ts = a.trader_status||{got:0,total:0};
     const logs = ((LIVE||{})[c]||{}).logs||[];
     const logTxt = logs.slice(-40).join(' | ');
@@ -2339,7 +2347,7 @@ function rDeck(){
     const thr = a.ready_threshold;
     const isNet = a.combo_type === 'net';
     const ratio = ts.total ? ts.got/ts.total : 0;
-    if(!ACTIONS[c]){ s1='idle'; t1='未跑'; }
+    if(!(ACTIONS||{})[c]){ s1='idle'; t1='未跑'; }
     else if(ts.total && ts.got===ts.total){ s1='ok'; t1=ts.got+'/'+ts.total; }
     else if(!isNet && thr && ratio>0 && ratio<thr){ s1='bad'; t1=ts.got+'/'+ts.total+' 未达门槛'; }
     else if(ts.got>0){ s1='warn'; t1=ts.got+'/'+ts.total; }
@@ -2375,7 +2383,7 @@ function rDeck(){
   // 指标卡
   let acts=0, vol=0, est=0, todo=0, orphan=0;
   cs.forEach(c=>{
-    const a = ACTIONS[c]||{};
+    const a = (ACTIONS||{})[c]||{};
     acts += a.count||0; vol += a.total_vol||0;
     if(a.data_ready) est += a.est_margin||0;
     if((a.count||0)>0) todo++;
@@ -2385,7 +2393,7 @@ function rDeck(){
   // 份额冻结（B 档）：未取到数据者的钱留在他名下，冻结为现金，不分给其他盘手
   let frozenN=0, frozenAmt=0, frozenRows='';
   cs.forEach(c=>{
-    const a = ACTIONS[c]||{};
+    const a = (ACTIONS||{})[c]||{};
     const ai = a.alloc_info;
     if(!ai || !ai.frozen || !Object.keys(ai.frozen).length) return;
     const nm = ((AA||{})[c]||{}).name || (PF[c]||{}).name || c;
@@ -2409,7 +2417,7 @@ function rDeck(){
   const issues = [];
   cs.forEach(c=>{
     const nm = ((AA||{})[c]||{}).name || (PF[c]||{}).name || c;
-    const a = ACTIONS[c]||{};
+    const a = (ACTIONS||{})[c]||{};
     const ts = a.trader_status||{got:0,total:0};
     const logs = ((LIVE||{})[c]||{}).logs||[];
     if(a.positions_stale && nowHM>=1170)
@@ -2442,6 +2450,7 @@ function rDeck(){
 
   return `
   <div class="panel">
+    ${!ACTIONS ? '<div style="background:#faeeda;border:1px solid #f0d8a8;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px">⚠️ 未连接本机监控服务，以下为兜底状态（全灰属正常）。请在本机打开本页并确保监控服务运行中，即可看到六环节实时状态。</div>' : ''}
     <h3>跟投驾驶舱 <span class="hint">六环节全链路状态 · 每环都带时点，可直接核对"跑没跑、什么时候跑的"</span></h3>
     <div class="cards" style="grid-template-columns:repeat(5,1fr);margin-bottom:10px">
       <div class="card"><div class="label">待执行动作</div><div class="value">${fmt(acts)} 笔</div><div class="sub">${todo} / ${cs.length} 个组合有差异</div></div>
