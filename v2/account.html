@@ -2102,11 +2102,46 @@ function doCalibrate(c, mode){
 }
 // ---------- 日记录 Tab（2026-08-29 v2：盘前计划+开盘执行每日快照回溯） ----------
 let SNAP_DATE = todayStr();
+let DAILY_REC = null;      // 人工备注（/api/daily_record，与自动归档分开保存）
+let REC_FILTER = 'all';    // 逐笔明细筛选：all / fail / orphan
 async function loadSnap(){
   try{
     const r = await fetch('http://127.0.0.1:18081/api/daily_snapshots?date='+SNAP_DATE, {cache:'no-store'});
-    if(r.ok){ SNAP = await r.json(); render(); }
+    if(r.ok){ SNAP = await r.json(); }
   }catch(e){}
+  try{
+    const r2 = await fetch('http://127.0.0.1:18081/api/daily_record?date='+SNAP_DATE, {cache:'no-store'});
+    DAILY_REC = (r2 && r2.ok) ? await r2.json() : null;
+  }catch(e){ DAILY_REC = null; }
+  render();
+}
+// 未成交原因：从该组合最近日志里找同品种记录，归一化为可读原因
+function actionReason(c, act){
+  const logs = (LIVE && LIVE[c] && LIVE[c].logs) || [];
+  const kw = [act.symbol, act.name, act.variety].filter(Boolean).map(x => String(x).toUpperCase());
+  const hits = logs.filter(l => { const s = String(l).toUpperCase(); return kw.some(k => k && s.indexOf(k) >= 0); }).slice(-4);
+  if(!hits.length) return '';
+  const txt = hits.join(' | ');
+  const MAP = [['拒单','交易所拒单'],['不在可交易','非交易时段被拒'],['未解析','主力合约未解析'],
+               ['无可平','无可平数量'],['无行情','行情未订阅'],['连接','连接异常'],
+               ['限频','请求限频'],['失败','下单失败'],['跳过','已跳过']];
+  for(const pair of MAP) if(txt.indexOf(pair[0]) >= 0) return pair[1];
+  const last = String(hits[hits.length-1]).replace(/^\d{2}:\d{2}:\d{2}\s*/, '');
+  return last.length > 42 ? last.slice(0, 42) + '…' : last;
+}
+function setRecFilter(f){ REC_FILTER = f; render(); }
+async function saveDailyRec(){
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const body = { market_view: g('rec_mv'), risk_alert: g('rec_ra'), combo_notes: g('rec_cn') };
+  const tip = document.getElementById('rec_tip');
+  try{
+    const r = await fetch('http://127.0.0.1:18081/api/daily_record?date=' + SNAP_DATE, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if(tip) tip.textContent = r.ok ? '✅ 已保存 ' + new Date().toTimeString().slice(0,8)
+                                   : '❌ 保存失败（HTTP ' + r.status + '）';
+  }catch(e){
+    if(tip) tip.textContent = '❌ 保存失败：无法连接监控服务';
+  }
 }
 function rDailyRecord(){
   const snap = (SNAP && SNAP.date===SNAP_DATE) ? SNAP : {date:SNAP_DATE, pre_market:{}, execution:{records:[]}};
@@ -2163,19 +2198,56 @@ function rDailyRecord(){
       <td style="text-align:right">${estHtml}</td>
     </tr>`;
   }).join('');
-  // ② 开盘执行：从 snapshot 的 execution.records 统计（动作状态用当前 LIVE 内存态查）
+  // ② 开盘执行统计（2026-09-04 修复两处真 bug）：
+  //   ① 原用文案比对状态（'✓ 成交'），而 actionStatus 实际返回 '✓ 已成交'，成交数恒为 0；
+  //      改用函数自带的 kind 字段（done/wait/pending/fail），不受文案变动影响。
+  //   ② 历史日期没有成交回执，原代码仍拿【当前实时持仓】去判历史动作，结果必然是假的；
+  //      现在历史日期只显示归档动作数，成交情况标注"未记录"，不再编造数字。
   let doneCnt=0, pendCnt=0, failCnt=0, totalExec=0;
   const allActions = pm.all_actions || [];
-  allActions.forEach(a=>{
-    totalExec++;
-    const st = actionStatus(a.combo||combo, a);
-    if(st.t==='✓ 成交') doneCnt++; else if(st.t==='⏳ 挂单') pendCnt++; else if(st.t==='✗ 未成交') failCnt++;
+  const isToday = snap.date === todayStr();
+  if(isToday){
+    allActions.forEach(a=>{
+      totalExec++;
+      const st = actionStatus(a.combo||combo, a);
+      if(st.kind==='done') doneCnt++; else if(st.kind==='pending') pendCnt++; else if(st.kind==='fail') failCnt++;
+    });
+  }else{
+    totalExec = allActions.length;
+  }
+  const rate = (isToday && totalExec) ? (doneCnt/totalExec*100).toFixed(1)+'%' : '—';
+  // ③ 逐笔动作明细（此前只统计数量、不渲染，几百条动作全靠猜）
+  const _rnpm = (DAILY_REC && DAILY_REC.pre_market) || {};
+  const _orphanN = allActions.filter(a=>a.orphan).length;
+  const detailList = allActions.filter(a=>{
+    if(REC_FILTER==='orphan') return !!a.orphan;
+    if(REC_FILTER==='fail'){ if(!isToday) return false; const st=actionStatus(a.combo||combo,a); return st && st.kind==='fail'; }
+    return true;
   });
-  const rate = totalExec ? (doneCnt/totalExec*100).toFixed(1)+'%' : '—';
+  const detailRows = detailList.length ? detailList.map(a=>{
+    const cnm = (AA[a.combo]||{}).name || a.combo || '—';
+    const st = isToday ? actionStatus(a.combo||combo, a) : null;
+    const stHtml = st ? `<span class="legend-chip" style="${st.bg}">${esc(st.t)}</span>`
+                      : '<span class="muted" style="font-size:12px">历史未记录</span>';
+    const rs = (isToday && st && st.kind==='fail') ? actionReason(a.combo||combo, a) : '';
+    const dirHtml = a.direction==='BUY' ? '<span class="up">买</span>' : '<span class="down">卖</span>';
+    const sessLbl = (typeof SESSION_LBL!=='undefined' && SESSION_LBL[sessionKey(a)]) || a.session || '—';
+    return `<tr>
+      <td style="text-align:left">${esc(String(cnm).replace('组合','').replace('全能主','').replace('优质',''))}</td>
+      <td style="text-align:left">${esc(a.name||a.symbol||'—')}</td>
+      <td style="text-align:center">${dirHtml}</td>
+      <td style="text-align:center">${a.offset==='OPEN'?'开':'平'}</td>
+      <td style="text-align:right">${fmt(a.volume||0)}</td>
+      <td style="text-align:right" class="muted">${fmt(a.cur||0)} → ${fmt(a.target||0)}</td>
+      <td style="text-align:center">${esc(sessLbl)}</td>
+      <td style="text-align:center">${a.orphan?'<span class="legend-chip" style="background:#faeeda;color:#854f0b">僵尸</span>':''}</td>
+      <td style="text-align:center">${stHtml}</td>
+      <td style="text-align:left;font-size:12px" class="muted">${esc(rs)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="10" class="empty">${REC_FILTER==='fail'?'没有未成交的动作':(REC_FILTER==='orphan'?'没有僵尸仓动作':'该日没有动作明细')}</td></tr>`;
   const execRows = records.length
     ? records.slice().reverse().map(x=>`<tr><td>${esc(x.at||'—')}</td><td style="text-align:left">${esc((AA[x.combo]||{}).name||x.combo)}</td><td style="text-align:right">${fmt(x.actions)} 笔</td><td style="text-align:center">${esc(x.group||'all')}</td></tr>`).join('')
     : '<tr><td colspan="4" class="empty">当日尚未核准（数据齐后 19:30 起自动核准归档）</td></tr>';
-  const isToday = snap.date === todayStr();
   return `
   <div class="panel">
     <h3>日记录 <span class="hint">持仓对齐页 ① 盘前计划 + ② 开盘执行 · 每日归档 · 点历史日期可调出</span></h3>
@@ -2200,15 +2272,43 @@ function rDailyRecord(){
     <div class="panel">
       <h3>② 开盘执行 <span class="hint">来源：${esc(snap.date)} 核准时自动写入 · 只读</span></h3>
       <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
-        <div class="card"><div class="label">已成交</div><div class="value" style="color:var(--down)">${doneCnt}${totalExec?' / '+totalExec:''}</div><div class="sub">${isToday?'实时':'历史'}</div></div>
-        <div class="card"><div class="label">挂单中</div><div class="value" style="color:#a06000">${pendCnt}</div><div class="sub">等待成交</div></div>
-        <div class="card"><div class="label">未成交</div><div class="value" style="color:var(--up)">${failCnt}</div><div class="sub">失败/无行情</div></div>
-        <div class="card"><div class="label">成交率</div><div class="value">${rate}</div><div class="sub">${isToday?'实时':'历史'}</div></div>
+        <div class="card"><div class="label">已成交</div><div class="value" style="color:var(--down)">${isToday?(doneCnt+(totalExec?' / '+totalExec:'')):'—'}</div><div class="sub">${isToday?'实时（按今日成交回执）':'历史归档无成交回执'}</div></div>
+        <div class="card"><div class="label">挂单中</div><div class="value" style="color:#a06000">${isToday?pendCnt:'—'}</div><div class="sub">${isToday?'等待成交':'历史归档无状态'}</div></div>
+        <div class="card"><div class="label">未成交</div><div class="value" style="color:var(--up)">${isToday?failCnt:'—'}</div><div class="sub">${isToday?'失败/无行情':'历史归档无状态'}</div></div>
+        <div class="card"><div class="label">归档动作</div><div class="value">${fmt(totalExec)}</div><div class="sub">${isToday?'当日计划动作数':'该日发起动作数'}</div></div>
       </div>
       <table>
         <tr><th>核准时间</th><th style="text-align:left">组合</th><th style="text-align:right">动作数</th><th style="text-align:center">分组</th></tr>
         ${execRows}
       </table>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h3>③ 逐笔动作明细 <span class="hint">${esc(snap.date)} 计划的全部动作 · ${isToday?'状态按今日成交回执判定':'历史归档不记录成交结果'}</span></h3>
+      <div class="filterbar">
+        <span class="label" style="font-weight:500">筛选：</span>
+        <button class="chip-btn ${REC_FILTER==='all'?'on':''}" onclick="setRecFilter('all')" style="border-radius:14px;padding:3px 12px;font-size:12px">全部 ${allActions.length}</button>
+        <button class="chip-btn ${REC_FILTER==='fail'?'on':''}" onclick="setRecFilter('fail')" style="border-radius:14px;padding:3px 12px;font-size:12px">仅未成交</button>
+        <button class="chip-btn ${REC_FILTER==='orphan'?'on':''}" onclick="setRecFilter('orphan')" style="border-radius:14px;padding:3px 12px;font-size:12px">仅僵尸仓 ${_orphanN}</button>
+        <span class="muted">当前 ${detailList.length} 条</span>
+      </div>
+      <div class="trade-table-wrap" style="max-height:420px"><table>
+        <tr><th style="text-align:left">组合</th><th style="text-align:left">品种</th><th>方向</th><th>开平</th>
+            <th style="text-align:right">手数</th><th style="text-align:right">当前 → 目标</th><th>时段</th>
+            <th>标记</th><th>状态</th><th style="text-align:left">未成交原因</th></tr>
+        ${detailRows}
+      </table></div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h3>④ 人工备注 <span class="hint">写入 daily_records/${esc(SNAP_DATE)}.json，与自动归档分开保存 · 改完自动存</span></h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div class="label">市场观点</div>
+          <textarea id="rec_mv" rows="3" style="width:100%;padding:6px" onchange="saveDailyRec()">${esc(_rnpm.market_view||'')}</textarea></div>
+        <div><div class="label">风险提示</div>
+          <textarea id="rec_ra" rows="3" style="width:100%;padding:6px" onchange="saveDailyRec()">${esc(_rnpm.risk_alert||'')}</textarea></div>
+      </div>
+      <div style="margin-top:8px"><div class="label">组合备注（建议一行一个组合）</div>
+        <textarea id="rec_cn" rows="3" style="width:100%;padding:6px" onchange="saveDailyRec()">${esc(typeof _rnpm.combo_notes==='string'?_rnpm.combo_notes:JSON.stringify(_rnpm.combo_notes||{}))}</textarea></div>
+      <div class="muted" style="margin-top:6px;font-size:12px" id="rec_tip">修改后自动保存（需监控服务在线）</div>
     </div>
     `}
   </div>`;
@@ -2233,10 +2333,15 @@ function rDeck(){
     const logs = ((LIVE||{})[c]||{}).logs||[];
     const logTxt = logs.slice(-40).join(' | ');
     const myExec = recs.filter(x=>x.combo===c).slice(-1)[0];
-    // ① 抓数
+    // ① 抓数（B 档 2026-09-04：盘手级组合到齐率 <70% 不放行 → 当日停摆，标红）
+    //    ready_threshold 未定义 = 服务还是旧版本，按旧口径显示，不误报。
     let s1,t1;
+    const thr = a.ready_threshold;
+    const isNet = a.combo_type === 'net';
+    const ratio = ts.total ? ts.got/ts.total : 0;
     if(!ACTIONS[c]){ s1='idle'; t1='未跑'; }
     else if(ts.total && ts.got===ts.total){ s1='ok'; t1=ts.got+'/'+ts.total; }
+    else if(!isNet && thr && ratio>0 && ratio<thr){ s1='bad'; t1=ts.got+'/'+ts.total+' 未达门槛'; }
     else if(ts.got>0){ s1='warn'; t1=ts.got+'/'+ts.total; }
     else { s1='bad'; t1=(ts.got||0)+'/'+(ts.total||0); }
     // ② 终查重建（盘手持仓数据时点；白天数据本就是前一晚抓的，属正常→黄；进了核准窗口还旧→红）
@@ -2277,6 +2382,29 @@ function rDeck(){
     (a.actions||[]).forEach(x=>{ if(x.orphan) orphan += x.volume||0; });
   });
 
+  // 份额冻结（B 档）：未取到数据者的钱留在他名下，冻结为现金，不分给其他盘手
+  let frozenN=0, frozenAmt=0, frozenRows='';
+  cs.forEach(c=>{
+    const a = ACTIONS[c]||{};
+    const ai = a.alloc_info;
+    if(!ai || !ai.frozen || !Object.keys(ai.frozen).length) return;
+    const nm = ((AA||{})[c]||{}).name || (PF[c]||{}).name || c;
+    const fd = ai.frozen_detail||{};
+    const keys = Object.keys(ai.frozen);
+    frozenN += keys.length;
+    frozenAmt += ai.frozen_amt||0;
+    const who = keys.map(k=>{
+      const d = fd[k]||[k, ai.frozen[k]];
+      return esc(String(d[0]))+'（'+esc(String(d[1]))+'）';
+    }).join('、');
+    frozenRows += `<tr>
+      <td style="text-align:left">${esc(String(nm).replace('组合','').replace('全能主',''))}</td>
+      <td style="text-align:center">${keys.length} 人</td>
+      <td style="text-align:right">¥${((ai.frozen_amt||0)/1e4).toFixed(0)}万</td>
+      <td style="text-align:right">¥${((ai.usable||0)/1e4).toFixed(0)}万</td>
+      <td style="text-align:left;font-size:12px">${who}</td></tr>`;
+  });
+
   // 异常清单
   const issues = [];
   cs.forEach(c=>{
@@ -2286,8 +2414,14 @@ function rDeck(){
     const logs = ((LIVE||{})[c]||{}).logs||[];
     if(a.positions_stale && nowHM>=1170)
       issues.push(['🔴', nm, `盘手持仓数据时点 ${String(a.positions_fetched_at||'—').slice(5,16)}，进入核准窗口仍未刷新`]);
-    if(ts.total && ts.got<ts.total)
+    const _thr = a.ready_threshold;
+    if(a.combo_type!=='net' && _thr && ts.total && ts.got<ts.total && ts.got/ts.total<_thr)
+      issues.push(['🚫', nm, `到齐 ${ts.got}/${ts.total}（${Math.round(ts.got/ts.total*100)}%）低于门槛 ${Math.round(_thr*100)}%：B 档不放行，该组合今日不下单`]);
+    else if(ts.total && ts.got<ts.total)
       issues.push(['🟠', nm, `取数未齐 ${ts.got}/${ts.total}（缺 ${ts.total-ts.got} 人）`]);
+    const _ai = a.alloc_info||{};
+    if(_ai.frozen && Object.keys(_ai.frozen).length)
+      issues.push(['💰', nm, `份额冻结 ${Object.keys(_ai.frozen).length} 人 ¥${((_ai.frozen_amt||0)/1e4).toFixed(0)}万（占组合 ${Math.round((_ai.frozen_amt||0)/(_ai.equity||1)*100)}%，留在本人名下不分给他人）`]);
     logs.slice(-30).forEach(x=>{
       if(/失败|异常|拒单|连接失败/.test(x))
         issues.push(['🔴', nm, String(x).slice(0,80)]);
@@ -2316,6 +2450,18 @@ function rDeck(){
       <div class="card"><div class="label">僵尸仓待清</div><div class="value">${fmt(orphan)} 手</div><div class="sub">目标表里已没有的持仓</div></div>
       <div class="card"><div class="label">异常项</div><div class="value" style="color:${issues.length>1?'var(--up)':'var(--down)'}">${issues.length>1?issues.length:0}</div><div class="sub">${issues.length>1?'需人工复核':'全部正常'}</div></div>
     </div>
+    ${frozenN? `<div class="panel" style="margin-bottom:12px">
+      <h3>💰 份额冻结 <span class="hint">B 档：未取到数据者的份额留在本人名下、冻结为现金，不分给其他盘手</span></h3>
+      <table>
+        <tr><th style="text-align:left">组合</th><th style="text-align:center">冻结人数</th>
+            <th style="text-align:right">冻结金额</th><th style="text-align:right">实际可分配</th>
+            <th style="text-align:left">冻结名单（原因）</th></tr>
+        ${frozenRows}
+      </table>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        合计冻结 ${frozenN} 人次 · ¥${(frozenAmt/1e4).toFixed(0)}万 —— 这笔钱当天不投出去，也不会被分给已取到数据的盘手。
+      </div>
+    </div>` : ''}
     <div class="panel" style="margin-bottom:12px">
       <h3>① 六环节全局状态 <span class="hint">取十个组合中最差的一档</span></h3>
       <table>
@@ -2323,7 +2469,8 @@ function rDeck(){
         <tr>${global.map(x=>`<td style="text-align:center">${chip(x[0],x[1])}</td>`).join('')}</tr>
       </table>
       <div class="muted" style="margin-top:8px;font-size:12px">
-        绿＝正常　黄＝警告（白天属正常，数据要晚上才刷新）　红＝异常，需人工介入　灰＝未跑到或旧版本未提供该字段
+        绿＝正常　黄＝警告（白天属正常，数据要晚上才刷新）　红＝异常，需人工介入　灰＝未跑到或旧版本未提供该字段<br>
+        盘手级组合「未达门槛」＝到齐率低于 70%，按 B 档当日不下单（宁可不动，也不让单个盘手吃下整个组合的资金）
       </div>
     </div>
     <div class="panel" style="margin-bottom:12px">
