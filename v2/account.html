@@ -66,6 +66,15 @@ th.sortable:hover{background:#eef1f5}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
 .panel h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .panel h3 .hint{font-size:11px;color:var(--weak);font-weight:400}
+/* —— 跟投驾驶舱 字段说明问号（2026-09-05 方案C） —— */
+.q{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#c9d4e2;color:#fff;font-size:10px;font-style:normal;line-height:1;cursor:help;margin-left:4px;position:relative;vertical-align:1.5px;flex:none;user-select:none}
+.q:hover{background:#0969da}
+.q .tip{display:none;position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);width:276px;background:#1f2a44;color:#e6ecf5;font-size:12px;line-height:1.75;font-weight:400;padding:10px 13px;border-radius:8px;box-shadow:0 6px 18px rgba(15,23,42,.25);z-index:99;white-space:normal;text-align:left;pointer-events:none}
+.q .tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1f2a44}
+.q:hover .tip{display:block}
+.q.down .tip{bottom:auto;top:calc(100% + 7px)}
+.q.down .tip::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:#1f2a44}
+
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 .kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px}
@@ -2453,11 +2462,11 @@ function rDeck(){
     ${!ACTIONS ? '<div style="background:#faeeda;border:1px solid #f0d8a8;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px">⚠️ 未连接本机监控服务，以下为兜底状态（全灰属正常）。请在本机打开本页并确保监控服务运行中，即可看到六环节实时状态。</div>' : ''}
     <h3>跟投驾驶舱 <span class="hint">六环节全链路状态 · 每环都带时点，可直接核对"跑没跑、什么时候跑的"</span></h3>
     <div class="cards" style="grid-template-columns:repeat(5,1fr);margin-bottom:10px">
-      <div class="card"><div class="label">待执行动作</div><div class="value">${fmt(acts)} 笔</div><div class="sub">${todo} / ${cs.length} 个组合有差异</div></div>
-      <div class="card"><div class="label">涉及手数</div><div class="value">${fmt(vol)} 手</div><div class="sub">多空净变化合计</div></div>
-      <div class="card"><div class="label">预计占用</div><div class="value">¥${(est/1e4).toFixed(0)}万</div><div class="sub">仅计数据齐全组合</div></div>
-      <div class="card"><div class="label">僵尸仓待清</div><div class="value">${fmt(orphan)} 手</div><div class="sub">目标表里已没有的持仓</div></div>
-      <div class="card"><div class="label">异常项</div><div class="value" style="color:${issues.length>1?'var(--up)':'var(--down)'}">${issues.length>1?issues.length:0}</div><div class="sub">${issues.length>1?'需人工复核':'全部正常'}</div></div>
+      <div class="card"><div class="label">待执行动作<span class="q">？<span class="tip">动作＝盘手目标持仓 − 跟投当前持仓的差额，折算成的待下单笔数（含开平、买卖、僵尸仓清理）。<br>≠ 今晚必下单：核准未过、交易时段未到、到齐率不足，都会让动作停留在「待执行」状态。</span></span></div><div class="value">${fmt(acts)} 笔</div><div class="sub">${todo}/${cs.length} 个组合有差额</div></div>
+      <div class="card"><div class="label">涉及手数<span class="q">？<span class="tip">全部待执行动作的手数绝对值合计，开仓/平仓、买入/卖出都算，<b>不做方向抵消</b>（买10手+卖8手=18手）。<br>含义是「一共要动多少手」，不是持仓变化净值，也不代表盈亏或敞口。<br>按交易时段分批执行：夜盘21:00 / 日盘09:00 / 股指09:30。</span></span></div><div class="value">${fmt(vol)} 手</div><div class="sub">全部待办手数（买+卖合计）</div></div>
+      <div class="card"><div class="label">预计占用<span class="q">？<span class="tip">若全部目标持仓成交，按当前行情价估算需要占用的<b>保证金</b>（不是持仓市值）。<br>只汇总「当日数据齐全」的组合，未取齐数据的组合不计入 → 数值可能偏小。<br>为估算值，会随价格波动，与真实结算占用存在差异。</span></span></div><div class="value">¥${(est/1e4).toFixed(0)}万</div><div class="sub">新仓预估保证金（未齐不计）</div></div>
+      <div class="card"><div class="label">僵尸仓待清<span class="q">？<span class="tip">盘手已不再持有（或按份额折算后不足1手），但跟投账户仍挂着、目标表里已没有的持仓。<br>成因：取整抹零 / 保证金收缩抹零 / 盘手换人 / 历史清理缺口。<br>系统会在清理时段自动平掉（夜盘21:00 / 日盘09:00 / 股指09:30）；数字大=积压，需留意。</span></span></div><div class="value">${fmt(orphan)} 手</div><div class="sub">盘手已清、跟投还挂的旧仓</div></div>
+      <div class="card"><div class="label">异常项<span class="q">？<span class="tip">统计下方「③ 今日异常清单」的条数。任一组合触发即记一条：到齐率&lt;70%未放行、份额冻结、盘手持仓过期、执行失败/拒单、僵尸仓积压。<br>数字=0 只代表今日未触发已知异常条件，不代表零风险。</span></span></div><div class="value" style="color:${issues.length>1?'var(--up)':'var(--down)'}">${issues.length>1?issues.length:0}</div><div class="sub">${issues.length>1?'需人工复核':'全部正常'}</div></div>
     </div>
     ${frozenN? `<div class="panel" style="margin-bottom:12px">
       <h3>💰 份额冻结 <span class="hint">B 档：未取到数据者的份额留在本人名下、冻结为现金，不分给其他盘手</span></h3>
@@ -2474,7 +2483,12 @@ function rDeck(){
     <div class="panel" style="margin-bottom:12px">
       <h3>① 六环节全局状态 <span class="hint">取十个组合中最差的一档</span></h3>
       <table>
-        <tr>${STEPS.map(s=>`<th style="text-align:center">${esc(s)}</th>`).join('')}</tr>
+        <tr>${[['① 抓盘手持仓','官方盘手持仓数据就绪检查，显示「已到/应到」人数。绿=全员到齐；黄=部分到（白天属正常，官网晚上才放当日数据）；红=到齐率低于70%当日不下单（B档）或全员未到；灰=未跑到/旧版本未提供'],
+        ['② 终查重建','每天20:15全量重建盘手持仓文件并热更新，显示数据时点。绿=当日新数据；黄=白天看旧数据属正常；红=过19:30核准窗口仍是旧数据（重建失败需查）'],
+        ['③ 配额计算','按卡玛四道约束（时效/上下限/回撤熔断/死区5%）给每个盘手分配资金份额。绿=已分配；灰=未分配（数据不足未算）'],
+        ['④ 生成计划','按份额×盘手持仓算出目标，与实际持仓比对生成动作清单。绿=计划已生成；灰=未生成'],
+        ['⑤ 核准入队','每天20:30自动核准，动作进执行队列。绿=已核准（显示时刻）；灰=未核准（到齐率不足70%不会核准）'],
+        ['⑥ 分时段执行','按夜盘/日盘/股指分批下单，日间每30分钟巡检补单。绿=执行正常；黄=有跳过（非交易时段拒单属正常，次日补）；红=失败/拒单需查']].map(s=>`<th style="text-align:center">${esc(s[0])}<span class="q down">？<span class="tip">${s[1]}</span></span></th>`).join('')}</tr>
         <tr>${global.map(x=>`<td style="text-align:center">${chip(x[0],x[1])}</td>`).join('')}</tr>
       </table>
       <div class="muted" style="margin-top:8px;font-size:12px">
@@ -2483,14 +2497,14 @@ function rDeck(){
       </div>
     </div>
     <div class="panel" style="margin-bottom:12px">
-      <h3>② 组合 × 环节矩阵 <span class="hint">点任意行可切到该组合</span></h3>
+      <h3>② 组合 × 环节矩阵 <span class="hint">点任意行可切到该组合 · 单元文字速读：x/y=盘手已到/应到 · 未达门槛=到齐&lt;70%当日不下单 · 有失败/有跳过=执行异常需查 · —=未跑到</span></h3>
       <div class="trade-table-wrap" style="max-height:420px"><table>
         <tr><th style="text-align:left">组合</th>${STEPS.map(s=>`<th style="text-align:center">${esc(s.split(' ')[0])}</th>`).join('')}</tr>
         ${matrixRows||'<tr><td colspan="7" class="empty">未加载到组合数据</td></tr>'}
       </table></div>
     </div>
     <div class="panel">
-      <h3>③ 今日异常清单 <span class="hint">按组合汇总，红色需立即处理</span></h3>
+      <h3>③ 今日异常清单 <span class="hint">按组合汇总，红/🚫需立即处理 · 触发项：到齐率&lt;70% · 取数未齐 · 份额冻结 · 盘手数据过期 · 执行失败/拒单 · 僵尸仓积压</span></h3>
       <table>
         <tr><th style="width:40px"></th><th style="width:150px;text-align:left">组合</th><th style="text-align:left">问题</th></tr>
         ${issues.map(x=>`<tr><td style="text-align:center">${x[0]}</td><td style="text-align:left">${esc(x[1])}</td><td style="text-align:left">${esc(x[2])}</td></tr>`).join('')}
