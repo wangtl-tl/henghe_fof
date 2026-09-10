@@ -1345,10 +1345,16 @@ function planBuiltMs(c){
 //   照样标已成交）。
 // 新实现：① 批次时刻按【计划生成日】推算绝对毫秒，收盘后建的计划顺延到次一交易日（跳过周末）；
 //        ② 成交匹配提升为 合约+方向+开平 三要素全等，累加手数与计划手数比对。
-function normSym(s){
+// 拆合约：'SHFE.rb2701' → {sym:'RB2701', vty:'RB'}；裸品种 'RB' → {sym:'RB', vty:'RB'}
+function symParts(s){
   const x = String(s||'').trim().toUpperCase();
-  const i = x.indexOf('.');
-  return i >= 0 ? x.slice(i+1) : x;          // 去交易所前缀：DCE.jd2610 → JD2610
+  const body = x.indexOf('.') >= 0 ? x.slice(x.indexOf('.')+1) : x;
+  const m = body.match(/^([A-Z]+)\d/);
+  return {sym: body, vty: m ? m[1] : body};
+}
+// 计划给的是不是带月份的具体合约
+function isContractCode(s){
+  return /^[A-Z]+\d/.test(symParts(s).sym);
 }
 function nextTradeDay(base){
   const d = new Date(base.getTime());
@@ -1385,10 +1391,11 @@ function sessionCutLbl(c, act){
 }
 // 该组合在【批次生效时刻之后】且【合约+方向+开平全等】的成交累计手数
 function fillMatch(c, act, cut){
-  const sym = normSym(act.symbol);
+  const ap = symParts(act.symbol);
+  const strict = isContractCode(act.symbol);   // 计划给了具体月份 → 严格比合约
   const dir = String(act.direction||'').toUpperCase();
   const off = String(act.offset||'').toUpperCase();
-  const key = c + '|' + sym + '|' + dir + '|' + off + '|' + cut;
+  const key = c + '|' + ap.sym + '|' + strict + '|' + dir + '|' + off + '|' + cut;
   window.__FM = window.__FM || {};
   if(window.__FM[key]) return window.__FM[key];
   const tr = (TODAY_TRADES && TODAY_TRADES[c]) || [];
@@ -1396,7 +1403,10 @@ function fillMatch(c, act, cut){
   tr.forEach(t=>{
     const ns = Number(t.trade_date_time||0);
     if(ns && (ns/1e6) < cut) return;                 // 早于批次生效时刻 → 属更早批次
-    if(normSym(t.symbol) !== sym) return;            // 具体合约（含月份）必须一致
+    const tp = symParts(t.symbol);
+    // 计划给具体合约 → 月份必须一致；计划只给裸品种（服务端按主力解析）→ 比品种即可。
+    // 方向/开平仍严格全等，避免"同品种反向成交"被误算。
+    if(strict ? (tp.sym !== ap.sym) : (tp.vty !== ap.vty)) return;
     const td = String(t.direction||'').toUpperCase();
     const to = String(t.offset||'').toUpperCase();
     if(td && dir && !(td===dir || (dir==='BUY'&&td.indexOf('买')>=0) || (dir==='SELL'&&td.indexOf('卖')>=0))) return;
@@ -1421,6 +1431,11 @@ function actionStatus(c, act){
       return {t:'✓ 已成交 '+m.vol+'手', bg:'#e6f4ea;color:#1a7f37', kind:'done'};
     if(m.vol > 0)
       return {t:'⏱ 部分成交 '+m.vol+'/'+need, bg:'#faebcc;color:#a06000', kind:'pending'};
+    // 夜盘（21:00 批）收盘后仍未成交 → 后端机制是"夜盘漏单次日日盘补"，
+    //   此时不该标红"未成交"让人以为出故障，改标橙色"次日09:00补"。
+    const _h = new Date().getHours();
+    if(sessionKey(act)==='night' && _h >= 23 && _h < 24)
+      return {t:'⏳ 未成交·次日09:00补', bg:'#faebcc;color:#a06000', kind:'pending'};
     return {t:'✗ 批次未成交', bg:'#fde8e8;color:#cf222e', kind:'fail'};
   }
   // 兜底：无 18081 / 今日成交未拉到 → 旧 logs 逻辑
