@@ -1338,39 +1338,89 @@ function planBuiltMs(c){
   const ms = Date.parse(String(s).replace(' ', 'T'));
   return isNaN(ms) ? 0 : ms;
 }
-// 该组合在【某批次当日时刻之后】的成交品种集合。
-// 注：/api/today_trades 按自然日返回，故"今日 00:00 + 批次分钟数"即为该批次触发时刻；
-//     不能用 plan_built_at 过滤 —— 计划每 15 分钟重建一次，成交永远早于最新计划，会恒判为未成交。
-function fillsSince(c, saHM){
-  const dayK = new Date().toDateString();
-  const k = c + '@' + saHM + '@' + dayK;
-  window.__FS = window.__FS||{}; window.__FSKEY = window.__FSKEY||{};
-  if(window.__FSKEY[k] === dayK && window.__FS[k]) return window.__FS[k];
-  const d0 = new Date(); d0.setHours(0,0,0,0);
-  const cut = d0.getTime() + saHM*60000;
+// ---------- 批次生效时刻 + 精确成交匹配（2026-09-10 重写） ----------
+// 旧实现缺陷：cut = 今日00:00 + 批次分钟数，且只按【品种】比对成交。
+//   计划是收盘后(20:40)生成的，其"日盘批次"本属次日 09:00，却拿今天白天成交去匹配，
+//   且完全不看方向/开平/合约月份 → 大量"已成交"误报（计划鸡蛋买平19手，今日只有卖开，
+//   照样标已成交）。
+// 新实现：① 批次时刻按【计划生成日】推算绝对毫秒，收盘后建的计划顺延到次一交易日（跳过周末）；
+//        ② 成交匹配提升为 合约+方向+开平 三要素全等，累加手数与计划手数比对。
+function normSym(s){
+  const x = String(s||'').trim().toUpperCase();
+  const i = x.indexOf('.');
+  return i >= 0 ? x.slice(i+1) : x;          // 去交易所前缀：DCE.jd2610 → JD2610
+}
+function nextTradeDay(base){
+  const d = new Date(base.getTime());
+  for(let i=0;i<7;i++){
+    const w = d.getDay();
+    if(w!==0 && w!==6) return d;             // 跳过周六周日
+    d.setDate(d.getDate()+1);
+  }
+  return d;
+}
+// 批次生效的绝对毫秒（收盘后建的计划 → 日盘/股指归次一交易日；凌晨建的 → 夜盘归今晚）
+function sessionCutMs(c, act){
+  const key = sessionKey(act);
+  const built = planBuiltMs(c);
+  const p = built ? new Date(built) : new Date();
+  const ph = p.getHours();
+  const base = new Date(p); base.setHours(0,0,0,0);
+  if(key === 'night'){
+    if(ph < 9){ const t = new Date(); t.setHours(0,0,0,0); base.setTime(t.getTime()); }
+    return nextTradeDay(base).getTime() + 21*60*60000;
+  }
+  if(ph >= 15) base.setDate(base.getDate()+1);   // 收盘后建的计划 → 日盘归次一交易日
+  return nextTradeDay(base).getTime() + (key==='index' ? (9*60+30) : 9*60) * 60000;
+}
+// 批次归属文案：今晚 21:00 / 次日 09:00 / 9/14 09:30
+function sessionCutLbl(c, act){
+  const cut = sessionCutMs(c, act);
+  const d = new Date(cut), n = new Date();
+  const hm = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  if(d.toDateString() === n.toDateString()) return (d.getHours() >= 18 ? '今晚 ' : '今日 ') + hm;
+  const tmr = new Date(n.getTime() + 864e5);
+  if(d.toDateString() === tmr.toDateString()) return '次日 ' + hm;
+  return (d.getMonth()+1) + '/' + d.getDate() + ' ' + hm;
+}
+// 该组合在【批次生效时刻之后】且【合约+方向+开平全等】的成交累计手数
+function fillMatch(c, act, cut){
+  const sym = normSym(act.symbol);
+  const dir = String(act.direction||'').toUpperCase();
+  const off = String(act.offset||'').toUpperCase();
+  const key = c + '|' + sym + '|' + dir + '|' + off + '|' + cut;
+  window.__FM = window.__FM || {};
+  if(window.__FM[key]) return window.__FM[key];
   const tr = (TODAY_TRADES && TODAY_TRADES[c]) || [];
-  const set = new Set();
+  let vol = 0, n = 0;
   tr.forEach(t=>{
     const ns = Number(t.trade_date_time||0);
-    if(ns && (ns/1e6) < cut) return;   // 纳秒→毫秒；早于该批次时刻 → 属于更早的批次
-    const s=String(t.symbol||''); const m=s.match(/^[A-Z]+\.([A-Za-z]+)\d/)||s.match(/^([A-Za-z]+)\d/);
-    set.add(m ? m[1].toUpperCase() : s.toUpperCase());
+    if(ns && (ns/1e6) < cut) return;                 // 早于批次生效时刻 → 属更早批次
+    if(normSym(t.symbol) !== sym) return;            // 具体合约（含月份）必须一致
+    const td = String(t.direction||'').toUpperCase();
+    const to = String(t.offset||'').toUpperCase();
+    if(td && dir && !(td===dir || (dir==='BUY'&&td.indexOf('买')>=0) || (dir==='SELL'&&td.indexOf('卖')>=0))) return;
+    if(to && off && !(to===off || (off==='OPEN'&&to.indexOf('开')>=0) || (off==='CLOSE'&&to.indexOf('平')>=0))) return;
+    vol += Number(t.volume||0); n++;
   });
-  window.__FS[k] = set; window.__FSKEY[k] = dayK;
-  return set;
+  const r = {vol: vol, n: n};
+  window.__FM[key] = r;
+  return r;
 }
 function actionStatus(c, act){
-  const sa = sessionAt(act);
-  const targetVar = String(act.variety||act.symbol||'').toUpperCase();
+  const cut = sessionCutMs(c, act);
   const tr = (TODAY_TRADES && TODAY_TRADES[c]) || null;
   if(tr){
-    // ① 该批次时刻之后有该品种成交 → 已成交
-    if(targetVar && fillsSince(c, sa).has(targetVar))
-      return {t:'✓ 已成交', bg:'#e6f4ea;color:#1a7f37', kind:'done'};
-    // ② 批次时刻未到 → 等待（显示具体时刻，不再笼统写"待执行"）
-    if(nowHM() < sa)
-      return {t:'⏳ 待 '+SESSION_LBL[sessionKey(act)], bg:'#f0f4fa;color:#57606a', kind:'wait'};
-    // ③ 批次已过但无该品种成交 → 未成交
+    // ① 批次生效时刻未到 → 等待（收盘后建的计划，日盘批次属次日，不拿今天成交抵账）
+    if(Date.now() < cut)
+      return {t:'⏳ 待 '+sessionCutLbl(c, act), bg:'#f0f4fa;color:#57606a', kind:'wait'};
+    // ② 已过批次时刻 → 按【合约+方向+开平】精确匹配成交回执
+    const m = fillMatch(c, act, cut);
+    const need = Number(act.volume||0);
+    if(m.vol > 0 && (!need || m.vol >= need))
+      return {t:'✓ 已成交 '+m.vol+'手', bg:'#e6f4ea;color:#1a7f37', kind:'done'};
+    if(m.vol > 0)
+      return {t:'⏱ 部分成交 '+m.vol+'/'+need, bg:'#faebcc;color:#a06000', kind:'pending'};
     return {t:'✗ 批次未成交', bg:'#fde8e8;color:#cf222e', kind:'fail'};
   }
   // 兜底：无 18081 / 今日成交未拉到 → 旧 logs 逻辑
@@ -1560,6 +1610,8 @@ function modalAlignContent(c){
     {key:'index', list:idx,   at:9*60+30,  lbl:'09:30', nm:'股指', icon:'🔵', pre:'今日'},
     {key:'day',   list:day,   at:9*60,     lbl:'09:00', nm:'日盘', icon:'🌅', pre:'今日'},
   ].filter(b=>b.list.length);
+  // 每批次的生效时刻（绝对毫秒）：由该批次首笔动作 + 计划生成时间推算
+  BATCH_DEF.forEach(b=>{ b.cut = b.list.length ? sessionCutMs(c, b.list[0].a) : 0; });
   const _nm = nowHM();
   BATCH_DEF.forEach(b=>{
     let done=0, wait=0, fail=0, pend=0;
@@ -1567,16 +1619,17 @@ function modalAlignContent(c){
       b.list.forEach(({a})=>{ const k=actionStatus(c,a).kind; if(k==='done')done++; else if(k==='fail')fail++; else if(k==='pending')pend++; else wait++; });
     }
     b.st={done,wait,fail,pend};
-    b.passed = !hist && (_nm >= b.at);                          // 批次时刻是否已过
+    b.passed = !hist && (Date.now() >= (b.cut||0));             // 批次生效时刻是否已到（收盘后建的计划，日盘批次属次日）
     b.rank = hist ? 0 : (b.st.fail>0 ? 0 : (b.passed ? 1 : 2)); // 异常优先 → 已执行 → 未来批次
     // 2026-09-03：夜盘品种在日盘照常交易，夜盘漏单改由次日 09:00 日盘补下（后端
     //   SESS_TRADEABLE['day']=['day','night']）。原文案「今晚 21:00 执行」会被误读为
     //   「只有夜盘能下」，补一句漏单兜底说明。
+    const _when = b.list.length ? sessionCutLbl(c, b.list[0].a) : b.lbl;
     b.title = hist ? `${b.icon} ${b.nm}批次 · ${b.lbl}`
-      : (b.passed ? `${b.icon} ${b.nm}批次 · ${b.lbl} 已执行${b.key==='night'?' · 漏单日盘补':''}`
-                  : `${b.icon} ${b.nm}批次 · ${b.pre==='今晚'?'今晚':'次日'} ${b.lbl} 执行${b.key==='night'?' · 漏单次日日盘补':''}`);
+      : (b.passed ? `${b.icon} ${b.nm}批次 · ${_when} 已执行${b.key==='night'?' · 漏单日盘补':''}`
+                  : `${b.icon} ${b.nm}批次 · ${_when} 执行${b.key==='night'?' · 漏单次日日盘补':''}`);
   });
-  BATCH_DEF.sort((x,y)=> x.rank-y.rank || x.at-y.at);
+  BATCH_DEF.sort((x,y)=> x.rank-y.rank || (x.cut||x.at)-(y.cut||y.at));
   const batchStatChip = (b)=>{
     if(hist) return '';
     const s=b.st, seg=[];
@@ -1628,7 +1681,7 @@ function modalAlignContent(c){
   ${a2.length ? `<div style="color:var(--sub);font-size:12px;margin-bottom:6px">动作清单（${a2.length} 笔 · 全部品种）</div>
     ${batchSummary}
     ${BATCH_DEF.map(b=>batchTable(b.list,b.title,batchStatChip(b))).join('')}
-    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}${hist?'':' · 批次按「异常优先」排序 · 夜盘漏单次日日盘补'}</span></div>`
+    <div class="mini-legend"><span>预计占用保证金 ¥${((p.est_margin||0)/1e4).toFixed(0)}万（含全部批次）· 预计总手数 ${fmt(p.total_vol||0)}${hist?'':' · 批次按「异常优先」排序 · 夜盘漏单次日日盘补 · 状态按合约+方向+开平精确匹配成交回执'}</span></div>`
     : '<div class="empty">该组合暂无动作（持仓已对齐）</div>'}
   <div class="modal-footer">
     <button style="padding:6px 14px;border-radius:8px;border:0.5px solid var(--line);background:#fff;cursor:pointer" onclick="closeAlignModal()">关闭</button>
