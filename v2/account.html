@@ -405,11 +405,12 @@ async function tryLive(){
   ]);
   // 2026-09-03：calibrate 弹窗里要看任意组合的"今日成交品种" → 拉所有 10 组合的 today_trades，避免"全部待执行"
   const tfAll = await Promise.allSettled(COMBOS.map(cc2 => f('http://127.0.0.1:18081/api/today_trades?combo='+cc2)));
-  if(s.status==='fulfilled' && s.value) LIVE = s.value; else LIVE = null;
+  // 2026-09-15：接口偶发失败时保留上一轮数据（旧行为置 null → 驾驶舱⑤⑥整列闪灰、被误读为系统没跑）
+  if(s.status==='fulfilled' && s.value) LIVE = s.value;
   if(r.status==='fulfilled' && r.value) READY = r.value;
   if(n.status==='fulfilled' && n.value && n.value.t) LIVE_NAV[c] = n.value;
-  if(ac.status==='fulfilled' && ac.value) ACTIONS = ac.value; else ACTIONS = null;
-  if(pl.status==='fulfilled' && pl.value) POLL = pl.value; else POLL = null;
+  if(ac.status==='fulfilled' && ac.value) ACTIONS = ac.value;
+  if(pl.status==='fulfilled' && pl.value) POLL = pl.value;
   if(sl.status==='fulfilled' && sl.value && sl.value.settlements){ window.__SETL=window.__SETL||{}; window.__SETL[c]=sl.value.settlements; }
   // 2026-09-03：校准页/历史页可能看非全局 combo → 补齐其 settlement（数据日标签 + 历史 KPI 依赖 __SETL）
   if(cc !== c){
@@ -2440,11 +2441,16 @@ function rDeck(){
     const s4 = a.plan_built_at ? 'ok' : 'idle', t4 = a.plan_built_at ? String(a.plan_built_at).slice(11,16) : '—';
     // ⑤ 核准
     const s5 = myExec ? 'ok' : 'idle', t5 = myExec ? String(myExec.at||'').slice(0,5) : '—';
-    // ⑥ 执行
+    // ⑥ 执行（2026-09-15 修复：旧逻辑只看 LIVE 日志最后 40 条里的文案，白天日志滚动快，
+    //    「核准完成」被成交回报挤出窗口 → 全部误显示灰。改为：今日成交明细（独立接口、按日累计）
+    //    为主判据，日志文字仅作补充；日盘时段内无执行迹象显示黄「日盘待执行」而不是灰）
     let s6,t6;
+    const nfill = ((TODAY_TRADES||{})[c]||[]).length;
     if(/失败|异常|拒单|连接失败/.test(logTxt)){ s6='bad'; t6='有失败'; }
+    else if(nfill>0){ s6='ok'; t6='今日成交 '+nfill+' 笔'; }
     else if(/核准完成/.test(logTxt)){ s6='ok'; t6='已执行'; }
     else if(/跳过/.test(logTxt)){ s6='warn'; t6='有跳过'; }
+    else if(nowHM>=540 && nowHM<=960){ s6='warn'; t6='日盘待执行'; }
     else { s6='idle'; t6='—'; }
     return [[s1,t1],[s2,t2],[s3,t3],[s4,t4],[s5,t5],[s6,t6]];
   };
@@ -2464,6 +2470,10 @@ function rDeck(){
     });
   };
   const global = [0,1,2,3,4,5].map(worst);
+  // 2026-09-15：⑤核准每天 20:30 才跑，白天今天必然还没有记录 → 旧文案「未到时点」被误读为系统没跑。
+  //   改成明确告知「待 20:30 核准」；⑥若仍灰（非交易时段）也统一改为「待 09:00」。
+  if(global[4][0]==='idle') global[4] = ['idle', nowHM<1230 ? '待 20:30 核准' : '待今晚核准'];
+  if(global[5][0]==='idle') global[5] = ['idle', nowHM<540 ? '待 09:00 执行' : '待执行'];
 
   // 指标卡
   let acts=0, vol=0, est=0, todo=0, orphan=0;
