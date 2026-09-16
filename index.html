@@ -1315,7 +1315,7 @@ var TRADER_TAGS = [{"aid":"18636","name":"隐形的小天鹅","tags":{"strategy"
                                 <th data-sort="direction" style="width:50px;">方向</th>
                                 <th data-sort="lots" style="width:70px;">合计手数</th>
                                 <th data-sort="lots_change" style="width:100px;">手数变化</th>
-                                <th data-sort="weight" style="width:65px;">权重%</th>
+                                <th data-sort="weight" style="width:65px;" title="敞口% = 该品种名义市值 ÷ 组合总名义市值（名义市值＝真实收盘价 × 合约乘数 × 手数）">敞口%</th>
                                 <th data-sort="market_value" style="width:90px;">名义价值(估)</th>
                                 <th data-sort="margin" style="width:85px;">保证金(元)</th>
                                 <th data-sort="accounts" style="width:60px;">账户</th>
@@ -2667,7 +2667,7 @@ function renderFollowPositions(data) {
             <td>${changeBadge}</td>
             <td class="num-highlight num-value-normal" style="color:${dirColor}">${p.weight}%</td>
             <td class="num-highlight">${formatPosMoney(p.market_value || p.position_value)}</td>
-            <td class="num-highlight" style="color:#d29922;">${formatPosMoney(p.margin)}</td>
+            <td class="num-highlight" style="color:#d29922;">${formatPosMoney(p.margin_real != null ? p.margin_real : p.margin)}</td>
             <td style="color:#8b949e;">${p.accounts}<small>户</small></td>
             <td><span class="risk-tag ${riskCls}">${riskLabel}</span></td>
             <td><span style="font-size:10px;padding:2px 6px;background:rgba(88,166,255,0.1);color:#58a6ff;border-radius:4px;">${p.advice}</span></td>
@@ -3981,7 +3981,7 @@ function renderPortfolioPositions(data) {
         return;
     }
 
-    // 精简条图:紧凑横向迷你条，品种名+方向图标+进度条+权重+变化
+    // 精简条图:紧凑横向迷你条，品种名+方向图标+进度条+敞口+变化
     if (barsEl) {
         const maxW = Math.max(...positions.map(p => p.weight));
         barsEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px;">` +
@@ -4010,8 +4010,8 @@ function renderPortfolioPositions(data) {
     // 持仓明细表（增强版）
     if (tableEl) {
         tableEl.innerHTML = `<table class="data-table" style="font-size:11px;margin-top:8px;width:100%;">
-            <thead><tr><th>品种</th><th>方向</th><th>手数</th><th>手数变化</th><th>权重</th><th>市值</th><th>保证金</th><th>账户</th><th>风险</th></tr></thead>
-            <tbody>${positions.slice(0,20).map(p => {
+            <thead><tr><th>品种</th><th>方向</th><th>手数</th><th>手数变化</th><th title="占组合总名义市值的比例">敞口</th><th>市值</th><th>保证金</th><th>账户</th><th>风险</th></tr></thead>
+            <tbody>${positions.map(p => {
                 const dirCls = p.direction === 'buy' ? 'positive' : 'negative';
                 const dirColor = p.direction === 'buy' ? '#f85149' : '#3fb950';
                 const riskColor = p.risk === 'ok' ? '#3fb950' : p.risk === 'warn' ? '#d29922' : '#f85149';
@@ -4030,12 +4030,12 @@ function renderPortfolioPositions(data) {
                     <td>${changeHtml}</td>
                     <td style="color:${dirColor};font-weight:500;">${p.weight}%</td>
                     <td>${formatPosMoney(p.market_value||p.position_value)}</td>
-                    <td style="color:#d29922;">${formatPosMoney(p.margin)}</td>
+                    <td style="color:#d29922;">${formatPosMoney(p.margin_real != null ? p.margin_real : p.margin)}</td>
                     <td style="color:#8b949e;">${p.accounts}户</td>
                     <td style="color:${riskColor};font-weight:500;">${riskLabel}</td>
                 </tr>`;
             }).join('')}</tbody>
-        </table>` + (positions.length > 20 ? `<div style="text-align:center;color:#8b949e;font-size:11px;padding:8px;">显示前20项，共${positions.length}个品种</div>` : '');
+        </table>`;
     }
 }
 
