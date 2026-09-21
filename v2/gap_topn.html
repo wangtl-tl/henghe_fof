@@ -45,6 +45,13 @@ body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--pag
 .var-table td.up,.var-table b.up{color:var(--up)}
 .var-table td.down,.var-table b.down{color:var(--down)}
 .var-table .cov{display:block;font-size:10.5px;color:var(--weak);font-weight:400;margin-top:2px}
+.alert{background:#fff5f5;border:2px solid #cf222e;border-left:8px solid #cf222e;border-radius:10px;padding:14px 18px;margin:16px 0 4px}
+.alert .a-title{font-size:15.5px;font-weight:700;color:#a40e26;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.alert ul{margin:6px 0 0 18px;line-height:1.75;font-size:13px;color:#4a1a1a}
+.alert li{margin-bottom:4px}
+.alert b{color:#a40e26}
+.alert .a-tail{margin-top:8px;font-size:12.5px;color:#7a5a5a}
+.warnline{background:#fff8e6;border:1px solid #f0c36d;border-radius:8px;padding:8px 12px;font-size:12.5px;color:#8a5a00;margin-bottom:12px}
 details.method{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px}
 details.method summary{cursor:pointer;font-weight:600;font-size:14px;padding:4px 0}
 details.method summary:hover{color:var(--blue)}
@@ -72,6 +79,17 @@ details.method b{color:var(--blue)}
 </div>
 
 <div class="wrap">
+  <div class="alert">
+    <div class="a-title">⚠ 读数警示（2026-09-22）：本页三条跟投模拟线的「绝对涨幅」不可采信</div>
+    <ul>
+      <li><b>① 数据源互相矛盾</b>：模拟线依赖的持仓快照与上游官方净值不是同一套账——同一账户同一区间，快照结算价算出赚 <b>6,108 万</b>，官网净值只涨 <b>1.62%</b>（差约 <b>265 倍</b>）；另一账户差 <b>46 倍</b>。</li>
+      <li><b>② 撮合缺陷：持仓只进不出</b>：目标合约之外的仓位永不平仓（实测某日 334 个合约中 <b>283 个是僵尸仓</b>），浮盈被价格断供凭空抹掉。</li>
+      <li><b>③ 价格序列断点</b>：个别合约在本地行情库中<b>零记录</b>，平 11 手即「实现」194 万虚假盈亏。</li>
+      <li><b>④ 缩放分母含出入金</b>：模拟盘按账户权益金额缩放持仓，账户一出金分母就变小、仓位被自动放大（某账户区间出金 574 万 = 期初权益的 73%）。</li>
+    </ul>
+    <div class="a-tail">→ <b>可信的只有蓝线「盘手真实」</b>（官方口径，窗口 +10.95%）。三条模拟线之间可<b>横向比较</b>（同一套口径），但<b>不得</b>与真实业绩或其他口径数字对比。根因对账进行中。</div>
+  </div>
+
   <div class="section-title">组合切换 <span class="hint">点击切换 · 下方两张图分别展示「只跟前 10 名」与「只跟前 20 名」</span></div>
   <div class="tabs" id="tabs"><div class="tab on" data-c="seven_composite" onclick="setCombo('seven_composite', this)">七重复合</div>
 <div class="tab" data-c="style_strategy" onclick="setCombo('style_strategy', this)">风格策略</div>
@@ -88,6 +106,7 @@ details.method b{color:var(--blue)}
       <span class="bt" id="t10-title">只跟前 10 名品种</span>
       <span class="bd">等比口径 · 砍掉的仓位变现金（不放大剩余仓位）</span>
     </div>
+    <div class="warnline">⚠ 下图橙线（跟投模拟）绝对涨幅不可采信，仅供与前 20 名档横向比较；蓝线为官方口径真实业绩。</div>
     <div class="kpi-bar" id="k10"></div>
     <div class="chart-wrap"><canvas id="chart10" role="img" aria-label="只跟前10名净值曲线">前10名净值图</canvas></div>
   </div>
@@ -104,6 +123,7 @@ details.method b{color:var(--blue)}
   </div>
 
   <div class="section-title">全组合三档对照 <span class="hint">区间涨幅（归一化 3000 万）· 红=正收益 绿=负收益 · 覆盖=前N名占组合名义敞口比例</span></div>
+  <div class="warnline">⚠ 下表三列跟投数字（全跟／前10名／前20名）为同一套模拟口径，<b>仅可在三者之间横向比较</b>；切勿与「盘手真实」列或其他对外数字对比（模拟线口径问题见页首警示）。</div>
   <table class="var-table">
     <tr><th>组合</th><th>盘手真实<br>(官方口径)</th><th>全跟<br>(参照)</th><th>只跟前 10 名</th><th>只跟前 20 名</th></tr>
     <tr><td>七重复合</td><td><b class="up">+20.79%</b></td><td><b class="up">+48.05%</b></td><td><b class="up">+43.08%</b><span class="cov">覆盖 58.2%</span></td><td><b class="up">+51.58%</b><span class="cov">覆盖 75.7%</span></td></tr>
@@ -122,7 +142,7 @@ details.method b{color:var(--blue)}
       <li><b>盘手真实</b>（蓝线）：官方口径组合净值（上游总净值按账户等权复合），窗口起点归一化到 3000 万。这是对外业绩唯一口径。</li>
       <li><b>跟投线</b>：组合合并净持仓按盘手真实权益等比缩放为目标，按核准时点价成交（A/C 组 = T+1 开盘，B 组 = 当日 21:00 夜盘开盘），计入手续费（万分之一）。</li>
       <li><b>覆盖率</b>：前 N 名品种名义占全组合名义敞口的比例。覆盖率越低，跟投线的实际杠杆越低。</li>
-      <li><b>⚠ 已知偏差</b>：跟投模拟线的绝对水平普遍高于盘手真实净值（日波动约为真实的 3 倍），根因是模拟盘按盘手账户权益缩放持仓、杠杆口径与真实净值不可直接比。因此<b>请重点看两档之间的相对差异与覆盖率</b>，绝对涨幅暂不可与真实业绩直接对比（该口径问题待单独核查）。</li>
+      <li><b>⚠ 已知缺陷（2026-09-22 诊断确认，修复中）</b>：跟投模拟线的<b>绝对涨幅不可采信</b>。已确证四个缺陷：①<b>持仓快照与官网净值为两套账</b>（同账户同区间，快照结算价算出 +6,108 万 vs 官网净值 +1.62%，差约 265 倍）；②撮合<b>只进不出</b>（目标外仓位永不平仓，单日僵尸仓占比达 85%）；③个别合约存在<b>价格序列断点</b>（零行情记录却产生 194 万盈亏）；④缩放分母用<b>含出入金的账户权益</b>。因此本页三条跟投线<b>仅可用于档位间相对比较</b>（同一套口径），<b>不可</b>与「盘手真实」或其他对外数字对比。唯一可信口径是官方净值（蓝线）。</li>
     </ul>
   </details>
 </div>
