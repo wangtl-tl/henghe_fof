@@ -57,12 +57,26 @@ details.card summary{cursor:pointer;font-weight:500;font-size:13px}
 details.card ul{margin:10px 0 0 18px;line-height:1.7}
 details.card li{margin-bottom:6px}
 @media(max-width:720px){.kcards{grid-template-columns:repeat(2,1fr)}}
+.alert{background:#fff5f5;border:2px solid #cf222e;border-left:8px solid #cf222e;border-radius:8px;padding:13px 16px;margin:12px 0}
+.alert .a-title{font-size:15px;font-weight:700;color:#a40e26;margin-bottom:7px}
+.alert ul{margin:5px 0 0 18px;line-height:1.7}
+.alert li{margin-bottom:4px;font-size:12.5px}
+.alert b{color:#a40e26}
+.alert .a-tail{margin-top:7px;font-size:12px;color:#7a5a5a}
 </style></head><body>
 <div class="topbar">
   <h1>衡合FOF · 跟投差距回测</h1>
   <div class="stat">回测窗口 2025-09-26 ~ 2026-09-17 · 7 个组合</div>
 </div>
 <div class="wrap">
+<div class="alert">
+  <div class="a-title">⚠ 读数警示（2026-09-22）：灰线（同构）与绿线（跟投）的「绝对净值」不可采信</div>
+  <ul>
+    <li><b>① 数据源互相矛盾</b>：模拟线依赖的持仓快照与上游官方净值不是同一套账——同一账户同一区间，快照结算价算出赚 <b>6,108 万</b>，官网净值只涨 <b>1.62%</b>（差约 <b>265 倍</b>）；另一账户差 <b>46 倍</b>。</li>
+    <li><b>② 撮合缺陷：持仓只进不出</b>（目标外仓位永不平仓，实测单日僵尸仓占 85%）、<b>③ 价格序列断点</b>（零行情合约产生 194 万虚假盈亏）、<b>④ 缩放分母含出入金</b>。</li>
+  </ul>
+  <div class="a-tail">→ 可信的是<b>蓝线「盘手真实」</b>（官方口径）。灰/绿两线之间可横向比较（同一套口径），但<b>绝对水平不得</b>与蓝线或任何对外数字对比。根因对账进行中。</div>
+</div>
 <div class="kcards">
       <div class="kcard"><div class="k">平均每笔价差</div><div class="v">+2.44 点</div><div class="tip">盘手盘中成交 vs 核准时点价</div></div>
       <div class="kcard"><div class="k">纯时点差中位</div><div class="v">-6.16%</div><div class="tip">跟投 vs 同构(收盘)· 负=略差</div></div>
@@ -177,7 +191,8 @@ details.card li{margin-bottom:6px}
   <div style="position:relative;height:320px"><canvas id="navChart" role="img" aria-label="组合净值三线对比图">净值图</canvas></div>
 </div>
 <details class="card"><summary>口径说明（防止误读）</summary><ul>
-<li><b>盘手真实期末</b>：组合内盘手官网每日真实权益等权平均，归一化到 3000 万起点 —— 盘手自己操作的真实结果（终极参照）。</li>
+<li><b>盘手真实期末</b>：组合内盘手<b>官网单位净值</b>等权复合（各盘手先归一化到自身起点=1.0，再对当日有值盘手等权平均），起点归一化到 3000 万 —— 盘手自己操作的真实结果（终极参照）。<b>2026-09-21 口径修正</b>：此前误用「每日权益直接算术平均」（等价资金加权 + 含出入金），窗口涨幅虚高（风格策略 +48.59% vs 官方 +10.95%）。</li>
+<li><b>⚠ 已知缺陷（2026-09-22 诊断确认，修复中）</b>：<b>同构(灰) 与跟投(绿) 两线的绝对水平不可采信</b>。已确证：①<b>持仓快照与官网净值为两套账</b>（同账户同区间 +6,108 万 vs +1.62%，差约 265 倍）；②撮合<b>只进不出</b>（目标外仓位永不平仓，单日僵尸仓占 85%）；③个别合约<b>价格序列断点</b>（零行情却产生 194 万盈亏）；④缩放分母用<b>含出入金</b>的账户权益。灰/绿<b>仅可互相比较</b>，<b>不可</b>与蓝线或任何对外数字对比。</li>
 <li><b>同构(收盘)期末</b>（灰线）：用跟投同一套持仓逻辑（组合合并净持仓按资金缩放），假设当日收盘价就能成交、无手续费无滑点 —— 理想基准。</li>
 <li><b>跟投期末</b>（绿线）：按真实核准逻辑（每晚 21:00 / 次日 09:00 / 09:30 三个时点）按时点价成交 + 手续费 —— 现实。</li>
 <li><b>纯时点差</b>（绿 − 灰）：(跟投期末 − 同构期末) ÷ 3000万 —— 只算"每天只跟一次"的时点/滞后代价，负 = 跟投吃亏。</li>
