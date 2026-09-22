@@ -52,6 +52,8 @@ th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{background:#eef1f5}
 .sort-indicator{font-size:9px;margin-left:3px;opacity:0.3;display:inline-block;width:8px}
 .sort-indicator.on{opacity:1;color:var(--blue);font-weight:700}
+/* 2026-09-22：品种对照弹窗表头吸顶（品种多需滚动，排序后不必滚回顶部） */
+.trade-table-wrap.sticky-head th{position:sticky;top:0;z-index:1}
 /* 持仓对齐 Tab（2026-08-27） */
 .toggle{position:relative;width:34px;height:18px;background:#d0d7de;border-radius:9px;cursor:pointer;display:inline-block;vertical-align:middle;transition:background .2s}
 .toggle.on{background:var(--down)}
@@ -1765,6 +1767,37 @@ function modalNav(d){
   if(modalHistDate){ modalLoadDate(COMBOS[alignModalIdx], modalHistDate); }
   else { renderModalBody(); ensureFillsForCombo(COMBOS[alignModalIdx]).then(()=>renderModalBody()); }
 }
+// 2026-09-22：原组合 ↔ 跟投账户「品种对照」表头排序
+// 沿用持仓明细同一套交互：点列头排序、再点同列反向；dir=1 降序、dir=-1 升序；默认按品种升序＝原有排列
+let modalSort = {col:'v', dir:-1};
+function modalSortVal(r, col){
+  if(col==='v')       return String(r.v||'');
+  if(col==='oNet')    return +r.oNet||0;
+  if(col==='fNet')    return +r.fNet||0;
+  if(col==='tLots')   return +r.tLots||0;
+  if(col==='diff')    return (+r.fNet||0)-(+r.tLots||0);   // 差异＝跟手数−理论（带符号，与显示一致）
+  if(col==='tMargin') return +r.tMargin||0;
+  if(col==='ok')      return r.ok?0:1;                     // 1=不对齐 → 点一下即"不对齐排最前"
+  return 0;
+}
+function sortModalRows(rows){
+  if(!modalSort.col || !rows || !rows.length) return rows||[];
+  const col = modalSort.col, dir = modalSort.dir;
+  return rows.slice().sort((a,b)=>{
+    if(col==='v'){
+      const va=String(a.v||''), vb=String(b.v||'');
+      return dir>0 ? vb.localeCompare(va) : va.localeCompare(vb);
+    }
+    const va = modalSortVal(a,col), vb = modalSortVal(b,col);
+    if(va===vb) return String(a.v||'').localeCompare(String(b.v||''));   // 同值按品种名稳定排列
+    return dir>0 ? vb-va : va-vb;
+  });
+}
+function setModalSort(col){
+  if(modalSort.col===col){ modalSort.dir = -modalSort.dir; }   // 同列再点＝反向
+  else { modalSort.col = col; modalSort.dir = (col==='v' ? -1 : 1); }  // 换列：品种 A→Z、数值大在前
+  renderModalBody();
+}
 // 弹窗：原组合 ↔ 跟投账户 品种逐项对照
 function compareByVariety(c){
   const cp = (window.EMBEDDED_COMBO_POSITIONS||{})[c]||[];
@@ -1841,7 +1874,13 @@ function modalCompareContent(c){
     : (ts.got>0
     ? `<div class="ok-strip">✅ 单盘手跟投 · ${ts.got} 位有数据</div>`
     : `<div class="danger-strip">⚠️ 单盘手数据未取到</div>`);
-  const tableRows = rows.map(r=>{
+  const sortedRows = sortModalRows(rows);
+  const ind = (col, label) => {
+    const on = modalSort.col===col;
+    const arrow = on ? (modalSort.dir>0?'▼':'▲') : '↕';
+    return `${label}<span class="sort-indicator ${on?'on':''}">${arrow}</span>`;
+  };
+  const tableRows = sortedRows.map(r=>{
     const dir = r.fNet>r.oNet?'+':'';
     const okBg = r.ok?'#e6f4ea':'#fde8e8';
     const okClr = r.ok?'#1a7f37':'#cf222e';
@@ -1872,9 +1911,17 @@ function modalCompareContent(c){
     <span>${modalHistDate ? '显示 '+esc(modalHistDate)+' 当天品种对照' : '实时（今日）· 选日期查看历史'}</span>
   </div>
   ${strip}
-  <div style="color:var(--sub);font-size:12px;margin-bottom:6px">品种逐项对照（${rows.length} 个品种）</div>
-  <div class="trade-table-wrap" style="max-height:380px;margin-bottom:10px"><table>
-    <tr><th>品种</th><th style="text-align:right">原手数</th><th style="text-align:right">跟手数</th><th style="text-align:right">理论</th><th style="text-align:right">差异</th><th style="text-align:right">理论保证金</th><th style="text-align:center">对齐</th></tr>
+  <div style="color:var(--sub);font-size:12px;margin-bottom:6px">品种逐项对照（${rows.length} 个品种）· <span style="color:var(--blue)">点击表头排序</span>（再点一次反向；「对齐」点击＝✗ 排最前）</div>
+  <div class="trade-table-wrap sticky-head" style="max-height:380px;margin-bottom:10px"><table>
+    <tr>
+      <th class="sortable" onclick="setModalSort('v')">${ind('v','品种')}</th>
+      <th class="sortable" style="text-align:right" onclick="setModalSort('oNet')">${ind('oNet','原手数')}</th>
+      <th class="sortable" style="text-align:right" onclick="setModalSort('fNet')">${ind('fNet','跟手数')}</th>
+      <th class="sortable" style="text-align:right" onclick="setModalSort('tLots')">${ind('tLots','理论')}</th>
+      <th class="sortable" style="text-align:right" onclick="setModalSort('diff')">${ind('diff','差异')}</th>
+      <th class="sortable" style="text-align:right" onclick="setModalSort('tMargin')">${ind('tMargin','理论保证金')}</th>
+      <th class="sortable" style="text-align:center" onclick="setModalSort('ok')">${ind('ok','对齐')}</th>
+    </tr>
     ${tableRows}</table></div>
   <div class="mini-legend">
     <span>原 <b>${fmt(a.oLots)}</b> 手 · 跟 <b>${fmt(a.fLots)}</b> 手 · 理论 <b>${fmt(a.tLots)}</b> 手</span>
@@ -1891,6 +1938,7 @@ function openCompareModal(c){
   compareModalIdx=COMBOS.indexOf(c);
   if(compareModalIdx<0) compareModalIdx=0;
   modalHist = null; modalHistDate = '';
+  modalSort = {col:'v', dir:-1};        // 每次新开弹窗回到默认顺序（组合间切换/切日期保留当前排序）
   const box = document.getElementById('alignModalBox');
   box.dataset.kind = 'compare';
   box.innerHTML = modalCompareContent(COMBOS[compareModalIdx]);
